@@ -29,14 +29,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD~2)" = "$BASE_SIDESTORE"
+          git merge-base --is-ancestor "$BASE_SIDESTORE" HEAD
           test "$(git diff --name-only "$BASE_SIDESTORE" HEAD | sort)" = "$(printf '%s\n' '.github/workflows/dualstack-candidate-native.yml' '.gitmodules' 'Dependencies/minimuxer' | sort)"
           test "$(git -C Dependencies/minimuxer rev-parse HEAD)" = "$FIX_MINIMUXER"
           test "$(git -C Dependencies/minimuxer rev-parse HEAD^)" = "$BASE_MINIMUXER"
           test "$(git -C Dependencies/SideSign rev-parse HEAD)" = 081994b142c781f9a32bbddfa7277f305b20447b
           test "$(git -C Dependencies/minimuxer diff --name-only "$BASE_MINIMUXER" "$FIX_MINIMUXER")" = Sources/Services/DeviceConnectionManager.swift
           git -C Dependencies/minimuxer diff "$BASE_MINIMUXER" "$FIX_MINIMUXER" --check
-          grep -Fq 'an IPv4 utun may also carry IPv6' Dependencies/minimuxer/Sources/Services/DeviceConnectionManager.swift && exit 71 || :
+          grep -Fq 'an IPv4 utun may also carry IPv6' Dependencies/minimuxer/Sources/Services/DeviceConnectionManager.swift
           grep -Fq 'A reachable IPv4 peer and CoreDevice handshake remain required' Dependencies/minimuxer/Sources/Services/DeviceConnectionManager.swift
           ! grep -Fq '$0.interfaceAddresses.v6.isEmpty' Dependencies/minimuxer/Sources/Services/DeviceConnectionManager.swift
           git diff --exit-code
