@@ -6,7 +6,8 @@ CURRENT_PROJECT_VERSION = 0700
 
 // Vars to be overwritten by `CodeSigning.xcconfig` if exists
 DEVELOPMENT_TEAM = S32Z3HMYVQ
-ORG_IDENTIFIER = com.SideStore
+// Isolated, unsigned device diagnostics only; do not reuse original app ID.
+ORG_IDENTIFIER = com.SideStore.DualStackQA
 
 // Default is free for CI builds, override it using CodeSigning.xcconfig if required
 CODE_SIGN_ENTITLEMENTS = ./AltStore/AltStoreFree.entitlements

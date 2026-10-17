@@ -6775,7 +6775,7 @@ enum V3SharedAppGroup {
     /// LC_RULE_PACKAGED_FALLBACK_ONLY: the packaged SideStore group, including
     /// the team-suffixed variants a re-signer writes, ranks first when no
     /// runtime group was published.
-    static let packagedGroup = "group.com.SideStore.SideStore"
+    static let packagedGroup = "group.com.SideStore.DualStackQA.SideStore"
     /// LiveProcess validates the host-selected group against its own sandbox
     /// and publishes it here. The host publishes the same key for itself.
     static let runtimeGroupEnvironmentKey = "LC_V3_INHERITED_APP_GROUP"

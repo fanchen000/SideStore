@@ -65,7 +65,7 @@
 			<string>SideStore General</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>sidestore</string>
+				<string>sidestoredualstackqa</string>
 			</array>
 		</dict>
 		<dict>
@@ -83,8 +83,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
-		<string>sidestore-com.SideStore.SideStore</string>
-		<string>sidestore-com.SideStore.SideStore.Beta</string>
+		<string>sidestore-com.SideStore.DualStackQA.SideStore</string>
+		<string>sidestore-com.SideStore.DualStackQA.SideStore.Beta</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
@@ -171,7 +171,7 @@
 	<string>SideStore can use local network access to discover Bonjour (mDNS) services on your network. This is not required for core functionality.</string>
 	<key>OSLogPreferences</key>
 	<dict>
-		<key>com.SideStore.SideStore</key>
+		<key>com.SideStore.DualStackQA.SideStore</key>
 		<dict>
 			<key>AltJIT</key>
 			<dict>
