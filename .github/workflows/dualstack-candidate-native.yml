@@ -1,0 +1,122 @@
+name: Dual-stack SideStore isolated iOS candidate
+
+on:
+  push:
+    branches: [fix/embedded-dualstack-probe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-candidate:
+    runs-on: macos-26
+    timeout-minutes: 80
+    env:
+      BASE_SIDESTORE: 0e6a626ae97401fb671ee12ae88e4f364fc2a31c
+      BASE_MINIMUXER: efbcab05d7d636aa37c6bf6c7f364d122c5610f6
+      FIX_MINIMUXER: 1176d626a717ea319854ca7ce6fff436b2c301ff
+      IDEVICE_REF: 803f9368e6b27a43d8a9f22dc0ec281c87883113
+      JKTCP_REF: 32c0210f286b4fd16efe05be4f57167a9d94459b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Verify exact isolated dependency patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD~2)" = "$BASE_SIDESTORE"
+          test "$(git diff --name-only "$BASE_SIDESTORE" HEAD | sort)" = "$(printf '%s\n' '.github/workflows/dualstack-candidate-native.yml' '.gitmodules' 'Dependencies/minimuxer' | sort)"
+          test "$(git -C Dependencies/minimuxer rev-parse HEAD)" = "$FIX_MINIMUXER"
+          test "$(git -C Dependencies/minimuxer rev-parse HEAD^)" = "$BASE_MINIMUXER"
+          test "$(git -C Dependencies/SideSign rev-parse HEAD)" = 081994b142c781f9a32bbddfa7277f305b20447b
+          test "$(git -C Dependencies/minimuxer diff --name-only "$BASE_MINIMUXER" "$FIX_MINIMUXER")" = Sources/Services/DeviceConnectionManager.swift
+          git -C Dependencies/minimuxer diff "$BASE_MINIMUXER" "$FIX_MINIMUXER" --check
+          grep -Fq 'an IPv4 utun may also carry IPv6' Dependencies/minimuxer/Sources/Services/DeviceConnectionManager.swift && exit 71 || :
+          grep -Fq 'A reachable IPv4 peer and CoreDevice handshake remain required' Dependencies/minimuxer/Sources/Services/DeviceConnectionManager.swift
+          ! grep -Fq '$0.interfaceAddresses.v6.isEmpty' Dependencies/minimuxer/Sources/Services/DeviceConnectionManager.swift
+          git diff --exit-code
+          mkdir -p artifacts/logs
+          printf 'SideStore=%s\nminimuxer=%s\nidevice=%s\njktcp=%s\n' "$GITHUB_SHA" "$FIX_MINIMUXER" "$IDEVICE_REF" "$JKTCP_REF" > artifacts/logs/isolated-candidate-pins.txt
+
+      - uses: maxim-lobanov/setup-xcode@v1.6.0
+        with:
+          xcode-version: "26.4"
+
+      - name: Acquire immutable Rust transport dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/NRG-Wardog/jktcp.git jktcp
+          git -C jktcp checkout --detach "$JKTCP_REF"
+          git clone --no-checkout https://github.com/NRG-Wardog/idevice.git idevice
+          git -C idevice checkout --detach "$IDEVICE_REF"
+          git -C idevice submodule update --init --recursive
+          test "$(git -C idevice rev-parse HEAD)" = "$IDEVICE_REF"
+          test "$(git -C jktcp rev-parse HEAD)" = "$JKTCP_REF"
+
+      - name: Select pinned Rust and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+          rustup default 1.98.1
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          rustup target add aarch64-apple-ios
+          if ! command -v bindgen >/dev/null 2>&1 || [ "$(bindgen --version)" != "bindgen 0.72.1" ]; then
+            cargo install --locked --force bindgen-cli --version 0.72.1
+          fi
+
+      - name: Build signed-input-independent idevice iOS archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --check --manifest-path jktcp/Cargo.toml
+          cargo fmt --check --manifest-path idevice/ffi/Cargo.toml
+          cargo test --locked --manifest-path jktcp/Cargo.toml --lib -- --skip tests::local_tcp --skip tests::handle_speed
+          cargo check --locked --manifest-path idevice/ffi/Cargo.toml --features obfuscate
+          BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$(xcrun --sdk iphoneos --show-sdk-path)" \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            cargo build --locked --release --target aarch64-apple-ios --features obfuscate --manifest-path idevice/ffi/Cargo.toml
+          test -s idevice/target/aarch64-apple-ios/release/libidevice_ffi.a
+          test -s idevice/ffi/idevice.h
+          cp idevice/ffi/idevice.h idevice/swift/include/idevice.h
+          xcodebuild -create-xcframework \
+            -library idevice/target/aarch64-apple-ios/release/libidevice_ffi.a \
+            -headers idevice/swift/include -output "$RUNNER_TEMP/IDevice.xcframework"
+          mkdir -p Dependencies/minimuxer/DeviceGateway/LocalBinary
+          cp -R "$RUNNER_TEMP/IDevice.xcframework" Dependencies/minimuxer/DeviceGateway/LocalBinary/IDevice.xcframework
+
+      - name: Native Swift compile of candidate SideStore
+        shell: bash
+        run: |
+          set -euo pipefail
+          swiftc -frontend -parse Dependencies/minimuxer/Sources/Services/DeviceConnectionManager.swift
+          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile \
+            -project AltStore.xcodeproj -scheme SideStore \
+            -derivedDataPath "$RUNNER_TEMP/repair-derived"
+          xcodebuild -project AltStore.xcodeproj -scheme SideStore \
+            -sdk iphoneos -configuration Release -derivedDataPath "$RUNNER_TEMP/repair-derived" \
+            -onlyUsePackageVersionsFromResolvedFile -disableAutomaticPackageResolution \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tee artifacts/logs/repair-native-build.log
+          test -f "$RUNNER_TEMP/repair-derived/Build/Products/Release-iphoneos/SideStore.app/Info.plist"
+          mkdir -p artifacts/unsigned/Payload
+          cp -R "$RUNNER_TEMP/repair-derived/Build/Products/Release-iphoneos/SideStore.app" artifacts/unsigned/Payload/
+          ( cd artifacts/unsigned && zip -qry ../SideStore-dualstack-repair-UNSIGNED.ipa Payload )
+          unzip -t artifacts/SideStore-dualstack-repair-UNSIGNED.ipa >/dev/null
+          shasum -a 256 artifacts/SideStore-dualstack-repair-UNSIGNED.ipa > artifacts/logs/unsigned-ipa-sha256.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sideStore-dualstack-isolated-candidate-evidence
+          path: |
+            artifacts/logs/
+            artifacts/SideStore-dualstack-repair-UNSIGNED.ipa
+          if-no-files-found: warn
+          retention-days: 14
