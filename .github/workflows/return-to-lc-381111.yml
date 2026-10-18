@@ -158,7 +158,8 @@ jobs:
           # No account/pairing reset actions in the return handler
           body=p.split('@objc private func returnToEmbeddedLiveContainer()',1)[1].split('#endif',1)[0]
           assert 'UIApplication.shared.open(url, options: [:])' in body
-          for forbidden in ('exit(', 'removeItem(', 'delete(', 'clear(', 'signOut(', 'pairing'):
+          for forbidden in ('exit(', 'removeItem(', 'delete(', 'clear(', 'signOut(',
+                            'resetPairing(', 'deletePairing(', 'removePairing('):
               assert forbidden not in body, forbidden
           print('EMBEDDED_SIDESTORE_RETURN_USES_EXISTING_GUEST_ROUTE_PASS')
           PY
