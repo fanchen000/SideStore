@@ -1,0 +1,142 @@
+name: HSC434 fixed LiveContainer SideStore candidate
+
+on:
+  push:
+    branches: [fix/hsc434-remote-mode-resync-20261018]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 100
+    steps:
+      - name: Checkout fixed SideStore 0.7 source
+        uses: actions/checkout@v4
+        with:
+          path: sidestore
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Checkout pinned LiveContainer 3.8.10 source
+        uses: actions/checkout@v4
+        with:
+          repository: raj-sh-git/LiveContainer
+          ref: 0ad69dd96b7e0e918eae0db94aff8aabb4a32ec9
+          path: live
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Select Xcode 26.2
+        uses: maxim-lobanov/setup-xcode@v1.6.0
+        with:
+          xcode-version: '26.2'
+
+      - name: Preflight exact fixed source and regression test
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C sidestore merge-base --is-ancestor e3b7e9941b3d7d108a907187b3d013d6c082098a HEAD
+          test "$(git -C live rev-parse HEAD)" = 0ad69dd96b7e0e918eae0db94aff8aabb4a32ec9
+          python3 sidestore/scripts/test_hsc434_remote_mode.py
+          git -C sidestore diff --exit-code
+          git -C live diff --exit-code
+          echo "PINNED_FIXED_INPUTS_VERIFIED"
+
+      - name: Build patched SideStore for physical iPhone
+        shell: bash
+        timeout-minutes: 55
+        run: |
+          set -euo pipefail
+          cd sidestore
+          xcodebuild archive -project AltStore.xcodeproj -scheme SideStore \
+            -sdk iphoneos -configuration Release \
+            -archivePath "$RUNNER_TEMP/ss_archive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM=XYZ0123456 ORG_IDENTIFIER=com.SideStore \
+            > "$RUNNER_TEMP/sidestore-build.log" 2>&1 || {
+              tail -n 75 "$RUNNER_TEMP/sidestore-build.log"
+              exit 1
+            }
+          test -f "$RUNNER_TEMP/ss_archive.xcarchive/Products/Applications/SideStore.app/SideStore"
+          mkdir -p "$RUNNER_TEMP/SideStorePayload/Payload"
+          ditto "$RUNNER_TEMP/ss_archive.xcarchive/Products/Applications/SideStore.app" \
+            "$RUNNER_TEMP/SideStorePayload/Payload/SideStore.app"
+          cd "$RUNNER_TEMP/SideStorePayload"
+          zip -qr "$RUNNER_TEMP/SideStore.ipa" Payload
+
+      - name: Build pinned LiveContainer 3.8.10 host
+        shell: bash
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          cd live
+          xcodebuild archive -project LiveContainer.xcodeproj -scheme LiveContainer \
+            -sdk iphoneos -configuration Release -arch arm64 \
+            -archivePath "$RUNNER_TEMP/lc_archive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            > "$RUNNER_TEMP/livecontainer-build.log" 2>&1 || {
+              tail -n 75 "$RUNNER_TEMP/livecontainer-build.log"
+              exit 1
+            }
+          test -f "$RUNNER_TEMP/lc_archive.xcarchive/Products/Applications/LiveContainer.app/LiveContainer"
+
+      - name: Embed freshly compiled SideStore, never download old nightly
+        shell: bash
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          brew install ldid
+          cd live
+          ditto "$RUNNER_TEMP/lc_archive.xcarchive" archive.xcarchive
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/build_github.sh')
+          old = 'wget https://github.com/raj-sh-git/SideStore/releases/download/nightly/SideStore.ipa'
+          text = p.read_text(encoding='utf-8')
+          if text.count(old) != 1:
+              raise SystemExit('ERROR: upstream LC embedding command changed')
+          text = text.replace(old, 'cp "$RUNNER_TEMP/SideStore.ipa" SideStore.ipa')
+          p.write_text(text, encoding='utf-8')
+          PY
+          export archive_path=archive scheme=LiveContainer
+          sh .github/build_github.sh > "$RUNNER_TEMP/embedding.log" 2>&1 || {
+            tail -n 85 "$RUNNER_TEMP/embedding.log"
+            exit 1
+          }
+          test -s LiveContainer+SideStore.ipa
+          python3 - <<'PY'
+          import hashlib, json, plistlib, zipfile
+          from pathlib import Path
+          ipa = Path('LiveContainer+SideStore.ipa')
+          with zipfile.ZipFile(ipa) as z:
+              assert z.testzip() is None, 'IPA CRC failed'
+              root = 'Payload/LiveContainer.app/'
+              main = plistlib.loads(z.read(root + 'Info.plist'))
+              embed = root + 'Frameworks/SideStoreApp.framework/'
+              side = plistlib.loads(z.read(embed + 'Info.plist'))
+              assert main['CFBundleIdentifier'] == 'com.kdt.livecontainer'
+              assert side['CFBundleIdentifier'] == 'com.SideStore.SideStore'
+              assert z.read(embed + 'SideStore')
+              extensions = [x for x in z.namelist() if '/PlugIns/' in x and x.endswith('.appex/Info.plist')]
+              assert len(extensions) >= 4, 'Missing required app extensions'
+          print(json.dumps({'status': 'UNSIGNED_CANDIDATE_NOT_DEVICE_TESTED',
+                            'side_source_commit': 'e3b7e9941b3d7d108a907187b3d013d6c082098a',
+                            'host_source_commit': '0ad69dd96b7e0e918eae0db94aff8aabb4a32ec9',
+                            'sha256': hashlib.sha256(ipa.read_bytes()).hexdigest()}))
+          PY
+          shasum -a 256 LiveContainer+SideStore.ipa > candidate.sha256
+
+      - name: Preserve unsigned candidate for controlled iLoader signing
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lc3810-ss070-hsc434-fixed-unsigned
+          path: |
+            live/LiveContainer+SideStore.ipa
+            live/candidate.sha256
+          if-no-files-found: error
+          retention-days: 14
