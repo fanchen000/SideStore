@@ -70,6 +70,12 @@ enum AnisetteProvider {
                 return false
             },
             onSuccess: { successfulServer in
+                // SideSign's authentication hsc=434 recovery calls
+                // AnisetteDataManager.shared.resync(), which uses activeMode.
+                // A one-off remote fetch does not set that mode itself.
+                // Bind the *successful* provider only, so the resync request
+                // targets the same identity/server as the initial Anisette.
+                SideSign.AnisetteDataManager.shared.setMode(.remote(server: successfulServer))
                 UserDefaults.standard.menuAnisetteURL = successfulServer.absoluteString
                 debugLog("[AnisetteProvider] Successfully fetched Anisette data from \(successfulServer.absoluteString)")
             }
