@@ -131,8 +131,13 @@ public actor AnisetteConfigManager {
         }()
 
         var resolvedClientInfo = (udClientInfo?.isEmpty == false ? udClientInfo : fileConfig?.clientInfo) ?? AppConstants.Anisette.defaultClientInfo
-        if resolvedClientInfo.contains("Pixel") || resolvedClientInfo.contains("Android") || resolvedClientInfo.contains("MacBookPro18,3") || resolvedClientInfo.contains("macOS;26.6") || resolvedClientInfo.contains("dt.Xcode") {
-            debugLog("[AnisetteConfigManager] Migrating legacy/blocked client_info to Windows default")
+        // Some Apple sign-in flows accept an Android AuthKit client profile
+        // where the current Windows profile fails (October 2026 community
+        // reports). Respect explicit Pixel/Android configuration instead of
+        // silently overwriting it on every load. Keep the historical macOS /
+        // Xcode migration for malformed legacy desktop profiles.
+        if resolvedClientInfo.contains("MacBookPro18,3") || resolvedClientInfo.contains("macOS;26.6") || resolvedClientInfo.contains("dt.Xcode") {
+            debugLog("[AnisetteConfigManager] Migrating legacy macOS/Xcode client_info to Windows default")
             resolvedClientInfo = AppConstants.Anisette.defaultClientInfo
             if udClientInfo != nil {
                 ud.customAnisetteClientInfo = resolvedClientInfo

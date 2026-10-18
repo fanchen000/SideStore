@@ -8,9 +8,27 @@ SOURCE = (
     Path(__file__).resolve().parents[1]
     / "SideStore" / "Core" / "Anisette" / "AnisetteProvider.swift"
 )
+CONFIG = (
+    Path(__file__).resolve().parents[1]
+    / "SideStore" / "Core" / "Anisette" / "AnisetteConfigManager.swift"
+)
 
 
 class RemoteAnisetteModeRegression(unittest.TestCase):
+    def test_community_pixel_profile_survives_config_load(self):
+        text = CONFIG.read_text(encoding="utf-8")
+        load = text.split("public func loadConfig()", 1)[1].split("public func makeRequestHeaders()", 1)[0]
+        legacy_branch = re.search(
+            r"if resolvedClientInfo\.contains\(.+?\)\s*\{"
+            r"(?:(?!\n\s*\}).)*?resolvedClientInfo = AppConstants\.Anisette\.defaultClientInfo",
+            load, re.DOTALL
+        )
+        self.assertIsNotNone(legacy_branch)
+        self.assertNotIn('"Pixel"', legacy_branch.group(0))
+        self.assertNotIn('"Android"', legacy_branch.group(0))
+        self.assertIn('"dt.Xcode"', legacy_branch.group(0))
+        self.assertIn('ud.customAnisetteClientInfo = resolvedClientInfo', load)
+
     def test_successful_failover_commits_remote_mode_before_returning(self):
         text = SOURCE.read_text(encoding="utf-8")
         # A fetch(mode: .remote) is temporary; SideSign's resync() later reads
