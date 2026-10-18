@@ -69,6 +69,12 @@ jobs:
             exit 1
           }
           grep -F 'grandSlamWindowsProfileMatchesKnownWorkingAkdHeader' "$RUNNER_TEMP/sidesign-gsa-tests.log"
+          swift test --filter 'simResync' > "$RUNNER_TEMP/sidesign-resync-tests.log" 2>&1 || {
+            grep -Ein 'error:|failed|Executed|issue recorded' "$RUNNER_TEMP/sidesign-resync-tests.log" | tail -n 80 || true
+            exit 1
+          }
+          grep -F 'simResyncWithoutMatchedProvisionedSessionFailsClosed' "$RUNNER_TEMP/sidesign-resync-tests.log"
+          grep -F 'simResyncRefusesLegacyV1FallbackWhenAdiMissing' "$RUNNER_TEMP/sidesign-resync-tests.log"
           echo "SIDESIGN_GSA_TESTS_PASS"
 
       - name: Build patched SideStore for physical iPhone
@@ -121,7 +127,7 @@ jobs:
           brew install ldid
           cd live
           ditto "$RUNNER_TEMP/lc_archive.xcarchive" archive.xcarchive
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 381101" archive.xcarchive/Products/Applications/LiveContainer.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 381102" archive.xcarchive/Products/Applications/LiveContainer.app/Info.plist
           python3 - <<'PY'
           from pathlib import Path
           p = Path('.github/build_github.sh')
@@ -146,7 +152,7 @@ jobs:
               assert z.testzip() is None, 'IPA CRC failed'
               root = 'Payload/LiveContainer.app/'
               main = plistlib.loads(z.read(root + 'Info.plist'))
-              assert main['CFBundleVersion'] == '381101', 'Build marker not embedded'
+              assert main['CFBundleVersion'] == '381102', 'Build marker not embedded'
               embed = root + 'Frameworks/SideStoreApp.framework/'
               side = plistlib.loads(z.read(embed + 'Info.plist'))
               assert main['CFBundleIdentifier'] == 'com.kdt.livecontainer'
