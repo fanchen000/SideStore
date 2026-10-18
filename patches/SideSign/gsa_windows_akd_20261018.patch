@@ -1,5 +1,5 @@
 diff --git a/Sources/DeveloperPortal/Authentication.swift b/Sources/DeveloperPortal/Authentication.swift
-index 0ce00cd..1f61e51 100644
+index 0ce00cd..cfa2b39 100644
 --- a/Sources/DeveloperPortal/Authentication.swift
 +++ b/Sources/DeveloperPortal/Authentication.swift
 @@ -341,6 +341,21 @@ public extension DeveloperPortal {
@@ -24,20 +24,32 @@ index 0ce00cd..1f61e51 100644
      func sendAuthenticationRequest(parameters requestParameters: [String: any Sendable], anisetteData: AnisetteData) async throws -> [String: any Sendable] {
          let requestURL = Constants.URLs.grandSlamAuth
          let h = customHeaders
-@@ -359,7 +374,7 @@ public extension DeveloperPortal {
+@@ -357,9 +372,11 @@ public extension DeveloperPortal {
+         request.httpBody = plistData
+ 
          let userAgent = anisetteData.userAgent.isEmpty ? h.grandSlam.userAgent : anisetteData.userAgent
++        let authClientInfo = Self.grandSlamClientInfo(anisetteData.clientInfo)
++        debugLog("[SideSign] GSA_WINDOWS_AKD_PROFILE_\(authClientInfo == anisetteData.clientInfo ? "NOT_APPLICABLE" : "APPLIED")")
          let headers: [String: String] = [
              "Content-Type": "text/x-xml-plist",
 -            "X-MMe-Client-Info": anisetteData.clientInfo,
-+            "X-MMe-Client-Info": Self.grandSlamClientInfo(anisetteData.clientInfo),
++            "X-MMe-Client-Info": authClientInfo,
              "Accept": "*/*",
              "User-Agent": userAgent,
              "Connection": "close"
 diff --git a/Tests/SideSignTests/SideSignTests.swift b/Tests/SideSignTests/SideSignTests.swift
-index 81e54fe..9be21bf 100644
+index 81e54fe..8c36428 100644
 --- a/Tests/SideSignTests/SideSignTests.swift
 +++ b/Tests/SideSignTests/SideSignTests.swift
-@@ -14,6 +14,21 @@ import GSACryptoKit
+@@ -6,6 +6,7 @@
+ //  Copyright © 2026 SideSign. All rights reserved.
+ //
+ 
++import Foundation
+ import Testing
+ @testable import SideSign
+ import CodeSignKit
+@@ -14,6 +15,21 @@ import GSACryptoKit
  @Suite("SideSign Core Tests")
  struct SideSignTests {
  
