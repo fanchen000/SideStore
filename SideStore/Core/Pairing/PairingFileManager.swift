@@ -53,7 +53,30 @@ final class PairingFileManager: NSObject {
         return FileManager.default.documentsDirectory.appendingPathComponent(fileName)
     }
 
+    /// iOS 27 recovery: a fresh, independently verified Remote Pairing
+    /// record can be staged as a NEW file without replacing the user's
+    /// existing RemoteRP or Lockdown records.
+    ///
+    /// This is a read-only overlay, confined to a uniquely named filename.
+    /// We do not rename, delete or overwrite any existing pairing file.
+    /// The candidate is used only when the real RPPairing parser accepts it.
+    private nonisolated func validatedRemotePairingCandidate() -> String? {
+        let url = FileManager.default.documentsDirectory.appendingPathComponent(
+            "PairingFile_RemoteRP_Validated_v110.plist"
+        )
+        guard let content = try? String(contentsOf: url, encoding: .utf8),
+              !content.isEmpty,
+              let parsed = try? PairingFileParser.parse(content: content, preferred: .rppairing),
+              parsed.mode == .rppairing else {
+            return nil
+        }
+        return content
+    }
+
     nonisolated func hasPairingFile(for mode: PairingProtocol) -> Bool {
+        if mode == .rppairing, validatedRemotePairingCandidate() != nil {
+            return true
+        }
         return FileManager.default.fileExists(atPath: pairingFileURL(for: mode).path)
     }
 
@@ -95,6 +118,10 @@ final class PairingFileManager: NSObject {
     }
 
     nonisolated func fetchPairingFile(for mode: PairingProtocol) -> String? {
+        if mode == .rppairing, let verified = validatedRemotePairingCandidate() {
+            debugLog("[PairingFile] VALIDATED_REMOTE_SIDECAR_SELECTED_NO_LEGACY_WRITE")
+            return verified
+        }
         let fileURL = pairingFileURL(for: mode)
         let fm = FileManager.default
         if fm.fileExists(atPath: fileURL.path),
