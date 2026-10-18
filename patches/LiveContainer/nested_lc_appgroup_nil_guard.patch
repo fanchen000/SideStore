@@ -1,0 +1,28 @@
+diff --git a/LiveContainer/Tweaks/NSFileManager+GuestHooks.m b/LiveContainer/Tweaks/NSFileManager+GuestHooks.m
+index edb884e..65f5815 100644
+--- a/LiveContainer/Tweaks/NSFileManager+GuestHooks.m
++++ b/LiveContainer/Tweaks/NSFileManager+GuestHooks.m
+@@ -35,8 +35,22 @@ void NSFMGuestHooksInit(void) {
+ @implementation NSFileManager(LiveContainerHooks)
+ 
+ - (nullable NSURL *)hook_containerURLForSecurityApplicationGroupIdentifier:(NSString *)groupIdentifier {
++    // An embedded LiveContainer guest can ask for its own App Group before
++    // the guest-specific lcAppGroupPath has been initialized. Constructing an
++    // NSURL from nil throws NSInvalidArgumentException and kills the
++    // multitasked guest. Never fall back to the *host's* App Group for this
++    // guest-private identifier: doing so can cross guest data boundaries.
++    if(groupIdentifier.length == 0) {
++        return nil;
++    }
+     if([groupIdentifier isEqualToString:[NSClassFromString(@"LCSharedUtils") appGroupID]]) {
+-        return [NSURL fileURLWithPath: NSUserDefaults.lcAppGroupPath];
++        NSString *mappedPath = NSUserDefaults.lcAppGroupPath;
++        if(mappedPath.length > 0) {
++            return [NSURL fileURLWithPath:mappedPath];
++        }
++        // Fail closed instead of leaking the host's App Group container into
++        // an uninitialized nested LiveContainer guest.
++        return nil;
+     }
+     NSURL *result;
+     if(isolateAppGroup) {
