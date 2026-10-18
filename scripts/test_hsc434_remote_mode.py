@@ -12,9 +12,38 @@ CONFIG = (
     Path(__file__).resolve().parents[1]
     / "SideStore" / "Core" / "Anisette" / "AnisetteConfigManager.swift"
 )
+DEFAULTS = (
+    Path(__file__).resolve().parents[1]
+    / "AltStore" / "Core" / "Extensions" / "UserDefaults+AltStore.swift"
+)
 
 
 class RemoteAnisetteModeRegression(unittest.TestCase):
+    def test_userdefaults_getter_does_not_discard_pixel_profile(self):
+        source = DEFAULTS.read_text(encoding="utf-8")
+        getter = source.split("@objc var customAnisetteClientInfo:", 1)[1]
+        getter = getter.split("@objc var customAnisetteUserAgent:", 1)[0]
+        self.assertIn("self.string(forKey: #function)", getter)
+        self.assertIn("return val", getter)
+        self.assertNotIn('v.contains("Pixel")', getter)
+        self.assertNotIn('v.contains("Android")', getter)
+        self.assertIn('v.contains("dt.Xcode")', getter)
+
+    def test_request_headers_uses_configured_profile(self):
+        source = CONFIG.read_text(encoding="utf-8")
+        section = source.split("public func makeRequestHeaders()", 1)[1]
+        section = section.split("public func resolvedXcodeVersion()", 1)[0]
+        self.assertIn("let config = loadConfig()", section)
+        self.assertIn("$0.clientInfo = config.clientInfo", section)
+
+    def test_provider_exposes_profile_kind_without_logging_secrets(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn('effective_client_profile=', source)
+        self.assertIn('return "android_custom"', source)
+        self.assertIn('return "windows"', source)
+        self.assertNotIn('debugLog(headers)', source)
+        self.assertNotIn('debugLog(headers.clientInfo)', source)
+
     def test_community_pixel_profile_survives_config_load(self):
         text = CONFIG.read_text(encoding="utf-8")
         load = text.split("public func loadConfig()", 1)[1].split("public func makeRequestHeaders()", 1)[0]

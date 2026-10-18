@@ -34,6 +34,16 @@ enum AnisetteProvider {
         let existingBlob = AnisetteConfigManager.shared.anisetteAdiBlob.flatMap { Data(base64Encoded: $0) }
         let identifier = await AnisetteConfigManager.shared.resolveDeviceIdentifier()
         let headers = await AnisetteConfigManager.shared.makeRequestHeaders()
+        // Safe, non-sensitive runtime evidence of which client profile reaches
+        // SideSign. Never log the raw headers, identifiers or Apple credentials.
+        let profileKind: String = {
+            if headers.clientInfo.contains("Pixel") || headers.clientInfo.contains("Android") {
+                return "android_custom"
+            }
+            if headers.clientInfo.contains("Windows") { return "windows" }
+            return "other"
+        }()
+        debugLog("[AnisetteProvider] effective_client_profile=\(profileKind)")
 
         let (anisetteData, newAdiBlob) = try await provider.fetchAnisetteDataWithFailover(
             servers: UserDefaults.standard.disableAnisetteRotation ? [servers[startIndex]] : servers,

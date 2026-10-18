@@ -69,7 +69,11 @@ public extension UserDefaults
     @objc var customAnisetteClientInfo: String? {
         get {
             let val = self.string(forKey: #function)
-            if let v = val, v.contains("Pixel") || v.contains("Android") || v.contains("MacBookPro18,3") || v.contains("macOS;26.6") || v.contains("dt.Xcode") {
+            // Honor explicit user-selected Android/Pixel profile. This getter
+            // feeds makeRequestHeaders() for remote Anisette. Discarding it here
+            // silently reverts to Windows even when loadConfig() allows it.
+            // Only migrate known stale desktop/Xcode client info strings.
+            if let v = val, v.contains("MacBookPro18,3") || v.contains("macOS;26.6") || v.contains("dt.Xcode") {
                 return AppConstants.Anisette.defaultClientInfo
             }
             return val
