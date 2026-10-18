@@ -37,10 +37,11 @@ enum AnisetteProvider {
         // Safe, non-sensitive runtime evidence of which client profile reaches
         // SideSign. Never log the raw headers, identifiers or Apple credentials.
         let profileKind: String = {
-            if headers.clientInfo.contains("Pixel") || headers.clientInfo.contains("Android") {
+            let clientInfo = headers.clientInfo ?? ""
+            if clientInfo.contains("Pixel") || clientInfo.contains("Android") {
                 return "android_custom"
             }
-            if headers.clientInfo.contains("Windows") { return "windows" }
+            if clientInfo.contains("Windows") { return "windows" }
             return "other"
         }()
         debugLog("[AnisetteProvider] effective_client_profile=\(profileKind)")

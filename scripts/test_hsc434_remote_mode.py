@@ -41,6 +41,8 @@ class RemoteAnisetteModeRegression(unittest.TestCase):
         self.assertIn('effective_client_profile=', source)
         self.assertIn('return "android_custom"', source)
         self.assertIn('return "windows"', source)
+        self.assertIn('let clientInfo = headers.clientInfo ?? ""', source)
+        self.assertNotIn('headers.clientInfo.contains(', source)
         self.assertNotIn('debugLog(headers)', source)
         self.assertNotIn('debugLog(headers.clientInfo)', source)
 
