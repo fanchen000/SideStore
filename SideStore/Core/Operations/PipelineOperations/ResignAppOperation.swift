@@ -105,8 +105,22 @@ final class ResignAppOperation: BasePipelineOperation<InstallAppOperationContext
             }
         }
         
+        let originalNestedHostID = appBundle.bundleIdentifier
         // Prepare app
         try self.prepare(appBundle, bundleID: bundleIdentifier, additionalInfoDictionaryValues: additionalValues, profiles: profiles, appexBundleIds: appexBundleIds)
+        // iCTRL and similar XCUITest runners have PlugIns/*.xctest signed
+        // as nested code. prepare() rewrites the outer bundle ID, whereas
+        // generic .appex iteration does not include .xctest. Align only
+        // a nested test bundle that matched the original Runner identity
+        // before the recursive signer runs.
+        let reconciledTests = try NestedXCTestBundleID.reconcile(
+            stagedApp: appBundle.fileURL,
+            originalBundleID: originalNestedHostID,
+            signedBundleID: finalBundleIdentifier
+        )
+        if reconciledTests > 0 {
+            debugLog("[ResignAppOperation] NESTED_XCTEST_IDENTIFIERS_ALIGNED count=\(reconciledTests)")
+        }
         try self.removeMissingAppExtensionReferences(from: appBundle)
         
         for appExtension in appBundle.appExtensions {
