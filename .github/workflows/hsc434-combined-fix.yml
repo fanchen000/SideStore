@@ -58,7 +58,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             DEVELOPMENT_TEAM=XYZ0123456 ORG_IDENTIFIER=com.SideStore \
             > "$RUNNER_TEMP/sidestore-build.log" 2>&1 || {
-              tail -n 75 "$RUNNER_TEMP/sidestore-build.log"
+              echo "### BOUNDED SWIFT COMPILER DIAGNOSTICS"
+              grep -Ein -C 3 'error:|fatal error:|swift compiler error|failed to compile|note: add .await.|performBackgroundFetch' \
+                "$RUNNER_TEMP/sidestore-build.log" | tail -n 115 | cut -c 1-500 || true
+              echo "### END OF BUILD LOG"
+              tail -n 18 "$RUNNER_TEMP/sidestore-build.log" | cut -c 1-500
               exit 1
             }
           test -f "$RUNNER_TEMP/ss_archive.xcarchive/Products/Applications/SideStore.app/SideStore"
