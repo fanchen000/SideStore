@@ -89,6 +89,26 @@ class MyAppsViewController: UICollectionViewController
     override func viewDidLoad()
     {
         super.viewDidLoad()
+
+        // The built-in SideStore runs as a guest inside LiveContainer. Its
+        // UIKit navigation controller is not a pushed LiveContainer screen:
+        // dismiss() cannot return to the host. The host's existing
+        // livecontainer-launch?bundle-name=ui handler performs the safe
+        // switch, prompting before it re-launches the container home.
+        // Never expose this button in a standalone SideStore install.
+        #if !os(tvOS)
+        if ProcessInfo.processInfo.environment["LC_HOME_PATH"] != nil {
+            let returnItem = UIBarButtonItem(
+                image: UIImage(systemName: "arrow.uturn.backward"),
+                style: .plain,
+                target: self,
+                action: #selector(returnToEmbeddedLiveContainer)
+            )
+            returnItem.accessibilityLabel = "返回 LiveContainer"
+            self.navigationItem.rightBarButtonItems =
+                (self.navigationItem.rightBarButtonItems ?? []) + [returnItem]
+        }
+        #endif
         
         // Allows us to intercept delegate callbacks.
         self.updatesDataSource.fetchedResultsController.delegate = self
@@ -157,6 +177,23 @@ class MyAppsViewController: UICollectionViewController
             self?.activeTeam = try? await AuthManager.shared.getAuthenticatedTeam()
         }
     }
+
+    #if !os(tvOS)
+    @objc private func returnToEmbeddedLiveContainer()
+    {
+        // Only a running embedded SideStore should invoke the guest-control
+        // route. No changes to account state, pairing or guest storage.
+        guard ProcessInfo.processInfo.environment["LC_HOME_PATH"] != nil,
+              let url = URL(string: "livecontainer://livecontainer-launch?bundle-name=ui") else {
+            return
+        }
+        UIApplication.shared.open(url, options: [:]) { success in
+            if !success {
+                debugLog("[MyApps] RETURN_TO_LC_URL_OPEN_FAILED")
+            }
+        }
+    }
+    #endif
     
     override func viewIsAppearing(_ animated: Bool)
     {
