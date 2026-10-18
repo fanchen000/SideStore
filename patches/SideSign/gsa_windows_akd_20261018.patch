@@ -1,5 +1,5 @@
 diff --git a/Sources/Anisette/AnisetteDataManager.swift b/Sources/Anisette/AnisetteDataManager.swift
-index 1ae36e8..f0ae11e 100644
+index 1ae36e8..f4ab671 100644
 --- a/Sources/Anisette/AnisetteDataManager.swift
 +++ b/Sources/Anisette/AnisetteDataManager.swift
 @@ -252,6 +252,10 @@ public final class AnisetteDataManager: @unchecked Sendable {
@@ -21,7 +21,15 @@ index 1ae36e8..f0ae11e 100644
                      timestamp: Date()
                  )
              }
-@@ -532,11 +537,27 @@ public final class AnisetteDataManager: @unchecked Sendable {
+@@ -491,6 +496,7 @@ public final class AnisetteDataManager: @unchecked Sendable {
+                     identifier: identifier,
+                     data: anisetteData,
+                     newAdiBlob: newBlob,
++                    effectiveAdiBlob: newBlob,
+                     timestamp: Date()
+                 )
+             }
+@@ -532,11 +538,27 @@ public final class AnisetteDataManager: @unchecked Sendable {
  
          switch resolvedMode {
          case .remote(let serverURL):
@@ -51,7 +59,7 @@ index 1ae36e8..f0ae11e 100644
  
              let rawResponse = try await provider.getAnisetteHeaders(
                  libDir: "",
-@@ -550,6 +571,7 @@ public final class AnisetteDataManager: @unchecked Sendable {
+@@ -550,6 +572,7 @@ public final class AnisetteDataManager: @unchecked Sendable {
              var resynced = currentData
              resynced.oneTimePassword = rawResponse.oneTimePassword
              resynced.machineID = rawResponse.machineID
