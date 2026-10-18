@@ -19,6 +19,14 @@ DEFAULTS = (
 
 
 class RemoteAnisetteModeRegression(unittest.TestCase):
+    def test_selected_anisette_subdomain_not_rewritten(self):
+        source = DEFAULTS.read_text(encoding="utf-8")
+        getter = source.split("@objc var menuAnisetteURL:", 1)[1]
+        getter = getter.split("@objc var menuAnisetteList:", 1)[0]
+        self.assertIn('val == "https://ani.sidestore.io"', getter)
+        self.assertNotIn('val.contains("ani.sidestore.io")', getter)
+        self.assertIn("return val", getter)
+
     def test_userdefaults_getter_does_not_discard_pixel_profile(self):
         source = DEFAULTS.read_text(encoding="utf-8")
         getter = source.split("@objc var customAnisetteClientInfo:", 1)[1]

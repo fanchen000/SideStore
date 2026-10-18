@@ -51,7 +51,10 @@ public extension UserDefaults
     @objc var menuAnisetteURL: String {
         get {
             let val = self.string(forKey: #function) ?? ""
-            if val.isEmpty || val.contains("ani.sidestore.io") {
+            // Migrate only the exact retired default URL. Subdomains such as
+            // win.ani.sidestore.io and new.ani.sidestore.io are intentionally
+            // user-selected endpoints and must not be silently replaced.
+            if val.isEmpty || val == "https://ani.sidestore.io" || val == "https://ani.sidestore.io/" {
                 return AppConstants.Anisette.Servers.defaultServerURL
             }
             return val
