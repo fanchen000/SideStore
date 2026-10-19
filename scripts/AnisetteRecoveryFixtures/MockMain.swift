@@ -71,4 +71,3 @@ import SideSign
   print("ANISI_CATALOG_RECOVERY_7_OF_7_PASS")
  }
 }
-Process exited with code 0.
