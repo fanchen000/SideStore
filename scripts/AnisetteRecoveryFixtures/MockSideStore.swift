@@ -32,4 +32,3 @@ actor AnisetteServersManager {
  func configure(names:[String], updated:[String]) {self.names=names;self.updated=updated;self.syncCalls=0}
  func counts()->Int {syncCalls}
 }
-Process exited with code 0.
