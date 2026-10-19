@@ -38,7 +38,10 @@ enum AnisetteProvider {
                 let refreshed = await AnisetteServersManager.shared.getActiveServerURLs()
                 // Catalog-driven automatic fallback must not silently send
                 // existing ADI provisioning data to an insecure endpoint.
-                let available = refreshed.filter { URL(string: $0)?.scheme == "https" }
+                let available = refreshed.filter {
+                    guard let url = URL(string: $0) else { return false }
+                    return url.scheme == "https" && url.host != nil
+                }
                 if !available.isEmpty {
                     return try await fetchRemote(
                         handler: handler, allowCatalogRecovery: false,
@@ -113,6 +116,19 @@ enum AnisetteProvider {
             }
             )
         } catch {
+            // Provisioning/ADI identity errors are not server outages. Trying
+            // a new server with the same invalid provisioning identity could
+            // propagate corrupted state and cannot repair it. Fail closed.
+            if let anisetteError = error as? SideSign.AnisetteError {
+                switch anisetteError {
+                case .incorrectlyProvisioned:
+                    throw error
+                case .badServerResponse(_, let payload) where payload.contains("-45061"):
+                    throw error
+                default:
+                    break
+                }
+            }
             // Do not reset ADI, change the signed-in account, or retry the same
             // failed endpoints indefinitely. Refresh the catalog once and retry
             // only if a genuinely new, user-visible active endpoint appears.
@@ -121,7 +137,10 @@ enum AnisetteProvider {
                 let refreshed = await AnisetteServersManager.shared.getActiveServerURLs()
                 let previous = Set(serverUrlStrings)
                 let newServers = refreshed.filter {
-                    !previous.contains($0) && URL(string: $0)?.scheme == "https"
+                    guard !previous.contains($0), let url = URL(string: $0) else {
+                        return false
+                    }
+                    return url.scheme == "https" && url.host != nil
                 }
                 if !newServers.isEmpty {
                     debugLog("[AnisetteProvider] Catalog supplied a new endpoint; retrying one time.")

@@ -457,23 +457,48 @@ extension AppDelegate
                                 refreshAppsCompletionHandler: @escaping (Result<[String: Result<InstalledApp, Error>], Error>) -> Void)
     {
         self.fetchSources { (result) in
-            switch result
-            {
-            case .failure: backgroundFetchCompletionHandler(.failed)
-            case .success: backgroundFetchCompletionHandler(.newData)
-            }
-            
+            // Do not complete iOS's background fetch before the refresh itself
+            // finishes. The old ordering could terminate the available runtime
+            // while AppManager's asynchronous operation was still in progress.
             if !UserDefaults.standard.isBackgroundRefreshEnabled
             {
+                switch result {
+                case .failure: backgroundFetchCompletionHandler(.failed)
+                case .success: backgroundFetchCompletionHandler(.newData)
+                }
                 refreshAppsCompletionHandler(.success([:]))
+                return
+            }
+
+            let context = DatabaseManager.shared.persistentContainer.newBackgroundContext()
+            let installedApps = InstalledApp.fetchAppsForBackgroundRefresh(in: context)
+            do {
+                _ = try AppManager.shared.backgroundRefresh(installedApps) { refreshResult in
+                    switch refreshResult {
+                    case .failure:
+                        backgroundFetchCompletionHandler(.failed)
+                    case .success(let apps):
+                        let hadFailure = apps.values.contains {
+                            if case .failure = $0 { return true }
+                            return false
+                        }
+                        if hadFailure {
+                            backgroundFetchCompletionHandler(.failed)
+                        } else if !apps.isEmpty {
+                            backgroundFetchCompletionHandler(.newData)
+                        } else if case .failure = result {
+                            backgroundFetchCompletionHandler(.failed)
+                        } else {
+                            backgroundFetchCompletionHandler(.noData)
+                        }
+                    }
+                    refreshAppsCompletionHandler(refreshResult)
+                }
+            } catch {
+                backgroundFetchCompletionHandler(.failed)
+                refreshAppsCompletionHandler(.failure(error))
             }
         }
-        
-        guard UserDefaults.standard.isBackgroundRefreshEnabled else { return }
-        
-        let context = DatabaseManager.shared.persistentContainer.newBackgroundContext()
-        let installedApps = InstalledApp.fetchAppsForBackgroundRefresh(in: context)
-        _ = try? AppManager.shared.backgroundRefresh(installedApps, completionHandler: refreshAppsCompletionHandler)
     }
 }
 

@@ -27,6 +27,10 @@ enum NestedXCTestBundleID {
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: plugIns.path, isDirectory: &isDirectory),
               isDirectory.boolValue else { return 0 }
+        let plugInsFlags = try plugIns.resourceValues(forKeys: [.isSymbolicLinkKey])
+        guard plugInsFlags.isSymbolicLink != true else {
+            throw ReconcileError.symlinkedTestBundle
+        }
 
         let items = try fileManager.contentsOfDirectory(
             at: plugIns,
@@ -41,6 +45,10 @@ enum NestedXCTestBundleID {
             }
 
             let infoURL = bundle.appendingPathComponent("Info.plist")
+            let infoFlags = try infoURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard infoFlags.isRegularFile == true, infoFlags.isSymbolicLink != true else {
+                throw ReconcileError.symlinkedTestBundle
+            }
             let raw = try Data(contentsOf: infoURL)
             var format = PropertyListSerialization.PropertyListFormat.xml
             guard var plist = try PropertyListSerialization.propertyList(
@@ -83,6 +91,10 @@ enum NestedXCTestBundleID {
         }
         let plugIns = stagedApp.appendingPathComponent("PlugIns", isDirectory: true)
         guard fileManager.fileExists(atPath: plugIns.path) else { return }
+        let plugInsFlags = try plugIns.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard plugInsFlags.isDirectory == true, plugInsFlags.isSymbolicLink != true else {
+            throw ReconcileError.symlinkedTestBundle
+        }
         let items = try fileManager.contentsOfDirectory(
             at: plugIns,
             includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
@@ -93,7 +105,12 @@ enum NestedXCTestBundleID {
             guard flags.isSymbolicLink != true, flags.isDirectory == true else {
                 throw ReconcileError.symlinkedTestBundle
             }
-            let info = try Data(contentsOf: bundle.appendingPathComponent("Info.plist"))
+            let infoURL = bundle.appendingPathComponent("Info.plist")
+            let infoFlags = try infoURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard infoFlags.isRegularFile == true, infoFlags.isSymbolicLink != true else {
+                throw ReconcileError.symlinkedTestBundle
+            }
+            let info = try Data(contentsOf: infoURL)
             guard let plist = try PropertyListSerialization.propertyList(
                 from: info, options: [], format: nil
             ) as? [String: Any],

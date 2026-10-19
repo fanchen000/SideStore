@@ -108,7 +108,37 @@ do {
     )
     require(noXCTest == 0, "ordinary applications without XCTest must remain untouched")
 
-    print("NESTED_XCTEST_IDENTITY_AND_ARTIFACT_REGRESSION_8_OF_8_PASS")
+    // Malicious/accidental symlinks must not cause writes outside staged IPA.
+    let linkedInfo = try mockApp(testIdentifier: original)
+    let linkedURL = linkedInfo.appendingPathComponent("PlugIns/iCTRLUITests.xctest/Info.plist")
+    let externalInfo = root.appendingPathComponent("external-info.plist")
+    try FileManager.default.copyItem(at: linkedURL, to: externalInfo)
+    try FileManager.default.removeItem(at: linkedURL)
+    try FileManager.default.createSymbolicLink(at: linkedURL, withDestinationURL: externalInfo)
+    let untouchedData = try Data(contentsOf: externalInfo)
+    do {
+        _ = try NestedXCTestBundleID.reconcile(
+            stagedApp: linkedInfo, originalBundleID: original, signedBundleID: signed)
+        require(false, "must reject Info.plist symlink")
+    } catch NestedXCTestBundleID.ReconcileError.symlinkedTestBundle {
+        let stillExternal = try Data(contentsOf: externalInfo)
+        require(stillExternal == untouchedData, "external plist must never be modified")
+    }
+
+    let linkedPlugins = try mockApp(testIdentifier: nil)
+    let pluginURL = linkedPlugins.appendingPathComponent("PlugIns")
+    try FileManager.default.removeItem(at: pluginURL)
+    try FileManager.default.createSymbolicLink(
+        at: pluginURL, withDestinationURL: linkedInfo.appendingPathComponent("PlugIns"))
+    do {
+        _ = try NestedXCTestBundleID.reconcile(
+            stagedApp: linkedPlugins, originalBundleID: original, signedBundleID: signed)
+        require(false, "must reject symlinked PlugIns directory")
+    } catch NestedXCTestBundleID.ReconcileError.symlinkedTestBundle {
+        // Expected: do not traverse an imported app's symlinked PlugIns.
+    }
+
+    print("NESTED_XCTEST_IDENTITY_AND_ARTIFACT_REGRESSION_10_OF_10_PASS")
 } catch {
     fputs("FAIL: test threw \(type(of: error))\n", stderr)
     exit(1)
