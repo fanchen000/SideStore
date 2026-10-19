@@ -1,0 +1,96 @@
+name: Audit LC381111 final unsigned IPA
+run-name: Offline artifact attestation for run 39204203699
+on:
+  push:
+    branches: [ci/lc381111-artifact-audit-20261019]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify-final-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out isolated audit inputs
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download exact successful native IPA artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/39204203699" --jq '.conclusion' | grep -Fx success
+          mkdir -p candidate
+          gh run download 39204203699 -R "$GITHUB_REPOSITORY" -n lc381111-return-to-container-unsigned -D candidate
+          find candidate -type f -printf '%P %s bytes\n' | sort
+      - name: Verify SHA256, ARM64 and embedded repair code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib,plistlib,struct,zipfile
+          base=pathlib.Path("candidate")
+          ipas=list(base.rglob("LiveContainer+SideStore.ipa"))
+          sums=list(base.rglob("candidate.sha256"))
+          assert len(ipas)==1 and len(sums)==1, "IPA/manifest not unique"
+          ipa=ipas[0]
+          digest=hashlib.sha256(ipa.read_bytes()).hexdigest()
+          expected=sums[0].read_text().split()[0].lower()
+          assert digest==expected, "SHA-256 does not match original build"
+          with zipfile.ZipFile(ipa) as z:
+              assert z.testzip() is None, "corrupted zip member"
+              host_root="Payload/LiveContainer.app/"
+              side_root=host_root+"Frameworks/SideStoreApp.framework/"
+              host=plistlib.loads(z.read(host_root+"Info.plist"))
+              side=plistlib.loads(z.read(side_root+"Info.plist"))
+              assert host["CFBundleIdentifier"]=="com.kdt.livecontainer"
+              assert host["CFBundleShortVersionString"]=="3.8.11"
+              assert str(host["CFBundleVersion"])=="381111"
+              assert side["CFBundleIdentifier"]=="com.SideStore.SideStore"
+              host_bin=z.read(host_root+host["CFBundleExecutable"])
+              side_bin=z.read(side_root+side["CFBundleExecutable"])
+              def arm64_macho(data):
+                  return len(data)>64 and data[:4]==bytes.fromhex("cffaedfe") and struct.unpack("<I",data[4:8])[0]==0x0100000c
+              assert arm64_macho(host_bin),"host not arm64"
+              assert arm64_macho(side_bin),"SideStore not arm64"
+              names=z.namelist()
+              extensions=[n for n in names if n.startswith(host_root) and "/PlugIns/" in n and n.endswith(".appex/Info.plist")]
+              assert len(extensions)>=4, "extensions missing"
+              markers=[
+                  b"Catalog supplied a new endpoint",
+                  b"Possible ADI desynchronization",
+                  b"preserved local state",
+                  b"NESTED_XCTEST_IDENTIFIERS_ALIGNED"
+              ]
+              missing=[x.decode() for x in markers if x not in side_bin]
+              assert not missing, "compiled SideStore repair markers missing: "+str(missing)
+              forbidden=[n for n in names if n.lower().endswith((".p12",".p8",".mobiledevicepairing"))]
+              assert not forbidden, "signing credential-like files bundled"
+          result={
+             "status":"CI_NATIVE_ARTIFACT_AUDIT_PASS",
+             "native_build_run":39204203699,
+             "ipa_sha256":digest,
+             "ipa_size_bytes":ipa.stat().st_size,
+             "host_bundle_id":host["CFBundleIdentifier"],
+             "host_version":host["CFBundleShortVersionString"],
+             "host_build":str(host["CFBundleVersion"]),
+             "embedded_side_id":side["CFBundleIdentifier"],
+             "arm64_host":True,"arm64_embedded_side":True,
+             "extensions":len(extensions),"compiled_sidestore_markers":len(markers),
+             "zip_crc":"PASS",
+             "phone_connected":False,"cryptographic_apple_signing_verified":False,
+             "device_installation_verified":False
+          }
+          pathlib.Path("audit.json").write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
+          print(json.dumps(result,sort_keys=True))
+          PY
+      - name: Upload independent audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lc381111-final-artifact-audit
+          path: audit.json
+          if-no-files-found: warn
+          retention-days: 14
