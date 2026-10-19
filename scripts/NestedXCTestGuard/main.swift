@@ -61,6 +61,35 @@ do {
     )
     require(unchanged == 0, "must be idempotent for already-correct nested bundle")
 
+    do {
+        try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: test, signedBundleID: signed)
+        require(false, "must not accept missing signatures and executable")
+    } catch NestedXCTestBundleID.ReconcileError.missingSignedTestArtifacts {
+        // Expected: the fixture is only metadata-aligned, not signed.
+    }
+    let testDir = test.appendingPathComponent("PlugIns/iCTRLUITests.xctest")
+    try Data("synthetic fixture binary".utf8).write(to: testDir.appendingPathComponent("iCTRLUITests"))
+    try FileManager.default.createDirectory(
+        at: testDir.appendingPathComponent("_CodeSignature"), withIntermediateDirectories: true
+    )
+    try Data("synthetic fixture resources".utf8).write(
+        to: testDir.appendingPathComponent("_CodeSignature/CodeResources")
+    )
+    try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: test, signedBundleID: signed)
+    do {
+        try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: test, signedBundleID: original)
+        require(false, "must reject an unintended nested bundle identifier")
+    } catch NestedXCTestBundleID.ReconcileError.unexpectedNestedIdentifier {
+        // Expected: signed nested and outer IDs must remain identical.
+    }
+    try FileManager.default.removeItem(at: testDir.appendingPathComponent("iCTRLUITests"))
+    do {
+        try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: test, signedBundleID: signed)
+        require(false, "must reject a signed-looking test with missing executable")
+    } catch NestedXCTestBundleID.ReconcileError.missingSignedTestArtifacts {
+        // Expected: a signature directory alone does not make XCTest launchable.
+    }
+
     let unrelated = try mockApp(testIdentifier: "com.different.test")
     do {
         _ = try NestedXCTestBundleID.reconcile(
@@ -79,7 +108,7 @@ do {
     )
     require(noXCTest == 0, "ordinary applications without XCTest must remain untouched")
 
-    print("NESTED_XCTEST_IDENTITY_REGRESSION_4_OF_4_PASS")
+    print("NESTED_XCTEST_IDENTITY_AND_ARTIFACT_REGRESSION_8_OF_8_PASS")
 } catch {
     fputs("FAIL: test threw \(type(of: error))\n", stderr)
     exit(1)
