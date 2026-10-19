@@ -2,7 +2,7 @@ name: LC381111 Return to LiveContainer + RP + Nested Guest
 
 on:
   push:
-    branches: [ci/sidestore-381111-fixturefix-20261019]
+    branches: [ci/sidestore-381111-cookieguard-20261019]
   workflow_dispatch:
 
 permissions:
@@ -120,6 +120,7 @@ jobs:
           git -C live apply --check "$patch_file"
           git -C live apply "$patch_file"
           git -C live diff --check
+          grep -Fq '!hostHomePath[0]' live/LiveContainer/Tweaks/NSFileManager+GuestHooks.m
           python3 - <<'PY'
           from pathlib import Path
           src = Path('live/LiveContainer/Tweaks/NSFileManager+GuestHooks.m').read_text()
