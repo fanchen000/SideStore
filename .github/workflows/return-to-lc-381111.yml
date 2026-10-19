@@ -2,7 +2,7 @@ name: LC381111 Return to LiveContainer + RP + Nested Guest
 
 on:
   push:
-    branches: [fix/return-to-container-381111]
+    branches: [ci/sidestore-381111-full-hardened-20261019]
   workflow_dispatch:
 
 permissions:
@@ -77,6 +77,16 @@ jobs:
           grep -F 'simResyncRefusesLegacyV1FallbackWhenAdiMissing' "$RUNNER_TEMP/sidesign-resync-tests.log"
           echo "SIDESIGN_GSA_TESTS_PASS"
 
+      - name: Compile and execute real Anisette and background completion regressions
+        shell: bash
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          python3 sidestore/scripts/test_anisette_catalog_recovery.py | tee "$RUNNER_TEMP/anisi-catalog-test.log"
+          grep -Fx 'ANISI_CATALOG_RECOVERY_7_OF_7_PASS' "$RUNNER_TEMP/anisi-catalog-test.log"
+          python3 sidestore/scripts/test_background_fetch_completion.py | tee "$RUNNER_TEMP/background-completion-test.log"
+          grep -Fx 'SIDESTORE_BACKGROUND_COMPLETION_7_OF_7_PASS' "$RUNNER_TEMP/background-completion-test.log"
+
       - name: Compile reviewed zh-Hans into iOS Storyboards
         shell: bash
         run: |
@@ -98,7 +108,7 @@ jobs:
             sidestore/scripts/NestedXCTestGuard/main.swift \
             -o "$RUNNER_TEMP/test-nested-xctest"
           "$RUNNER_TEMP/test-nested-xctest" | tee "$RUNNER_TEMP/test-nested-xctest.log"
-          grep -Fx 'NESTED_XCTEST_IDENTITY_REGRESSION_4_OF_4_PASS' "$RUNNER_TEMP/test-nested-xctest.log"
+          grep -Fx 'NESTED_XCTEST_IDENTITY_AND_ARTIFACT_REGRESSION_10_OF_10_PASS' "$RUNNER_TEMP/test-nested-xctest.log"
           grep -F 'NESTED_XCTEST_IDENTIFIERS_ALIGNED' sidestore/SideStore/Core/Operations/PipelineOperations/ResignAppOperation.swift
 
       - name: Apply and verify guest AppGroup nil-path guard
@@ -248,7 +258,7 @@ jobs:
               extensions = [x for x in z.namelist() if '/PlugIns/' in x and x.endswith('.appex/Info.plist')]
               assert len(extensions) >= 4, 'Missing required app extensions'
           print(json.dumps({'status': 'UNSIGNED_CANDIDATE_NOT_DEVICE_TESTED',
-                            'side_source_commit': 'e3b7e9941b3d7d108a907187b3d013d6c082098a',
+                            'side_source_commit': '2805913d6ad1a05e0f7b13ab26c19ac3843e88a4',
                             'host_source_commit': '9108ae624ea001f7d7696d48407f890b48fa2653',
                             'sha256': hashlib.sha256(ipa.read_bytes()).hexdigest()}))
           PY
