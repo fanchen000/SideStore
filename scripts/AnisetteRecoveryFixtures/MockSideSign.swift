@@ -30,4 +30,3 @@ public final class AnisetteDataManager: @unchecked Sendable {
     throw AnisetteError.badServerResponse(503,"all failed")
  }
 }
-Process exited with code 0.
