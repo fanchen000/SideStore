@@ -85,9 +85,9 @@ class RemoteAnisetteModeRegression(unittest.TestCase):
     def test_mode_not_implicitly_reset_or_adi_destroyed(self):
         text = SOURCE.read_text(encoding="utf-8")
         self.assertEqual(text.count("setMode(.remote(server: successfulServer))"), 1)
-        # This fix must not add a second ADI mutation. Existing upstream
-        # recovery, which may purge on -45061, remains unchanged.
-        self.assertEqual(text.count("anisetteAdiBlob = nil"), 2)
+        # Automatic failover must not delete pairing/account ADI state.
+        self.assertEqual(text.count("anisetteAdiBlob = nil"), 0)
+        self.assertIn("Possible ADI desynchronization; preserved local state", text)
         self.assertNotIn("clearSignInInfo(", text)
         self.assertNotIn("clearActiveCertificate(", text)
 
