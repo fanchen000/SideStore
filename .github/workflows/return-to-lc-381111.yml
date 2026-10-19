@@ -2,7 +2,7 @@ name: LC381111 Return to LiveContainer + RP + Nested Guest
 
 on:
   push:
-    branches: [fix/return-to-container-381111]
+    branches: [ci/sidestore-381111-anisette-xctest-20261019]
   workflow_dispatch:
 
 permissions:
@@ -98,7 +98,7 @@ jobs:
             sidestore/scripts/NestedXCTestGuard/main.swift \
             -o "$RUNNER_TEMP/test-nested-xctest"
           "$RUNNER_TEMP/test-nested-xctest" | tee "$RUNNER_TEMP/test-nested-xctest.log"
-          grep -Fx 'NESTED_XCTEST_IDENTITY_REGRESSION_4_OF_4_PASS' "$RUNNER_TEMP/test-nested-xctest.log"
+          grep -Fx 'NESTED_XCTEST_IDENTITY_AND_ARTIFACT_REGRESSION_8_OF_8_PASS' "$RUNNER_TEMP/test-nested-xctest.log"
           grep -F 'NESTED_XCTEST_IDENTIFIERS_ALIGNED' sidestore/SideStore/Core/Operations/PipelineOperations/ResignAppOperation.swift
 
       - name: Apply and verify guest AppGroup nil-path guard
@@ -248,7 +248,7 @@ jobs:
               extensions = [x for x in z.namelist() if '/PlugIns/' in x and x.endswith('.appex/Info.plist')]
               assert len(extensions) >= 4, 'Missing required app extensions'
           print(json.dumps({'status': 'UNSIGNED_CANDIDATE_NOT_DEVICE_TESTED',
-                            'side_source_commit': 'e3b7e9941b3d7d108a907187b3d013d6c082098a',
+                            'side_source_commit': 'ddb6998501f11ceb708b825178b4e615d32c95ef',
                             'host_source_commit': '9108ae624ea001f7d7696d48407f890b48fa2653',
                             'sha256': hashlib.sha256(ipa.read_bytes()).hexdigest()}))
           PY
