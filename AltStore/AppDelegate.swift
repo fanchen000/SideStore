@@ -456,24 +456,46 @@ extension AppDelegate
     func performBackgroundFetch(backgroundFetchCompletionHandler: @escaping (UIBackgroundFetchResult) -> Void,
                                 refreshAppsCompletionHandler: @escaping (Result<[String: Result<InstalledApp, Error>], Error>) -> Void)
     {
-        self.fetchSources { (result) in
-            switch result
-            {
-            case .failure: backgroundFetchCompletionHandler(.failed)
-            case .success: backgroundFetchCompletionHandler(.newData)
+        // Do not finish iOS background fetch before the actual refresh ends.
+        // The old try? also dropped a synchronous startup failure without
+        // completing refreshAppsCompletionHandler.
+        self.fetchSources { sourceResult in
+            let sourcesFailed: Bool
+            switch sourceResult {
+            case .failure: sourcesFailed = true
+            case .success: sourcesFailed = false
             }
-            
-            if !UserDefaults.standard.isBackgroundRefreshEnabled
-            {
+
+            guard UserDefaults.standard.isBackgroundRefreshEnabled else {
+                backgroundFetchCompletionHandler(sourcesFailed ? .failed : .newData)
                 refreshAppsCompletionHandler(.success([:]))
+                return
+            }
+
+            let context = DatabaseManager.shared.persistentContainer.newBackgroundContext()
+            let installedApps = InstalledApp.fetchAppsForBackgroundRefresh(in: context)
+            do {
+                _ = try AppManager.shared.backgroundRefresh(installedApps) { refreshResult in
+                    let status: UIBackgroundFetchResult
+                    switch refreshResult {
+                    case .failure:
+                        status = .failed
+                    case .success(let appResults):
+                        let appFailed = appResults.values.contains { result in
+                            if case .failure = result { return true }
+                            return false
+                        }
+                        status = (sourcesFailed || appFailed) ? .failed :
+                                 (appResults.isEmpty ? .noData : .newData)
+                    }
+                    backgroundFetchCompletionHandler(status)
+                    refreshAppsCompletionHandler(refreshResult)
+                }
+            } catch {
+                backgroundFetchCompletionHandler(.failed)
+                refreshAppsCompletionHandler(.failure(error))
             }
         }
-        
-        guard UserDefaults.standard.isBackgroundRefreshEnabled else { return }
-        
-        let context = DatabaseManager.shared.persistentContainer.newBackgroundContext()
-        let installedApps = InstalledApp.fetchAppsForBackgroundRefresh(in: context)
-        _ = try? AppManager.shared.backgroundRefresh(installedApps, completionHandler: refreshAppsCompletionHandler)
     }
 }
 

@@ -102,6 +102,13 @@ jobs:
           grep -Fx 'NESTED_XCTEST_IDENTITY_AND_ARTIFACT_REGRESSION_8_OF_8_PASS' "$RUNNER_TEMP/test-nested-xctest.log"
           grep -F 'NESTED_XCTEST_IDENTIFIERS_ALIGNED' sidestore/SideStore/Core/Operations/PipelineOperations/ResignAppOperation.swift
 
+      - name: Test real background refresh completion ordering
+        shell: bash
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          python3 sidestore/scripts/test_background_fetch_completion.py
+
       - name: Verify pinned guest AppGroup and Cookie HOME guards
         shell: bash
         run: |
