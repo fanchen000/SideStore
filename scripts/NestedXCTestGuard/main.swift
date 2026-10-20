@@ -56,6 +56,27 @@ do {
         ).path
     ), "old nested signature must be invalidated in temporary staging")
 
+    do {
+        _ = try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: test)
+        require(false, "unsigned nested XCTest must fail post-sign gate")
+    } catch NestedXCTestBundleID.ReconcileError.missingSignedTestArtifacts {
+        // Expected: no signature resources after identity reconciliation.
+    }
+
+    // Synthetic files only exercise the structural gate. They are not a
+    // valid code signature and are never used as signing/runtime evidence.
+    let nested = test.appendingPathComponent("PlugIns/iCTRLUITests.xctest")
+    try Data(repeating: 0xCF, count: 5000).write(
+        to: nested.appendingPathComponent("iCTRLUITests"))
+    try FileManager.default.createDirectory(
+        at: nested.appendingPathComponent("_CodeSignature"),
+        withIntermediateDirectories: true)
+    try Data("synthetic-signature-marker".utf8).write(
+        to: nested.appendingPathComponent("_CodeSignature/CodeResources"))
+    let verifiedSignedArtifacts = try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: test)
+    require(verifiedSignedArtifacts == 1,
+            "structurally complete XCTest must pass offline artifact gate")
+
     let unchanged = try NestedXCTestBundleID.reconcile(
         stagedApp: test, originalBundleID: original, signedBundleID: signed
     )
@@ -78,6 +99,9 @@ do {
         stagedApp: ordinary, originalBundleID: original, signedBundleID: signed
     )
     require(noXCTest == 0, "ordinary applications without XCTest must remain untouched")
+    let ordinarySignedArtifacts = try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: ordinary)
+    require(ordinarySignedArtifacts == 0,
+            "ordinary applications must not require nested XCTest artifacts")
 
     print("NESTED_XCTEST_IDENTITY_REGRESSION_4_OF_4_PASS")
 } catch {

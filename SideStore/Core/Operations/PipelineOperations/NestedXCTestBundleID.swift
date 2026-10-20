@@ -10,6 +10,7 @@ enum NestedXCTestBundleID {
         case unexpectedNestedIdentifier
         case missingNestedIdentifier
         case symlinkedTestBundle
+        case missingSignedTestArtifacts
     }
 
     @discardableResult
@@ -67,5 +68,54 @@ enum NestedXCTestBundleID {
             updated += 1
         }
         return updated
+    }
+
+    /// An offline post-sign structural gate, not cryptographic verification.
+    /// iOS/testmanagerd remains the authority on actual signature validity.
+    /// Fail closed if the signer discarded or failed to sign a nested XCTest.
+    @discardableResult
+    static func requireSignedArtifacts(
+        stagedApp: URL,
+        fileManager: FileManager = .default
+    ) throws -> Int {
+        let plugIns = stagedApp.appendingPathComponent("PlugIns", isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: plugIns.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return 0 }
+
+        let items = try fileManager.contentsOfDirectory(
+            at: plugIns,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        )
+        var verified = 0
+        for bundle in items where bundle.pathExtension.lowercased() == "xctest" {
+            let flags = try bundle.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard flags.isSymbolicLink != true, flags.isDirectory == true else {
+                throw ReconcileError.symlinkedTestBundle
+            }
+            let infoURL = bundle.appendingPathComponent("Info.plist")
+            let raw = try Data(contentsOf: infoURL)
+            guard let info = try PropertyListSerialization.propertyList(
+                from: raw, options: [], format: nil
+            ) as? [String: Any],
+                  let executable = info["CFBundleExecutable"] as? String,
+                  !executable.isEmpty,
+                  !executable.contains("/"), !executable.contains("\\"),
+                  executable != ".", executable != ".." else {
+                throw ReconcileError.missingSignedTestArtifacts
+            }
+            let executableURL = bundle.appendingPathComponent(executable)
+            let sealURL = bundle.appendingPathComponent("_CodeSignature/CodeResources")
+            guard fileManager.fileExists(atPath: executableURL.path),
+                  fileManager.fileExists(atPath: sealURL.path),
+                  let binaryBytes = try? executableURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                  let sealBytes = try? sealURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                  binaryBytes > 4096, sealBytes > 0 else {
+                throw ReconcileError.missingSignedTestArtifacts
+            }
+            verified += 1
+        }
+        return verified
     }
 }
