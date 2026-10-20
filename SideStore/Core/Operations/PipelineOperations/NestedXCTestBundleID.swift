@@ -10,6 +10,7 @@ enum NestedXCTestBundleID {
         case unexpectedNestedIdentifier
         case missingNestedIdentifier
         case symlinkedTestBundle
+        case missingSignedTestArtifacts
     }
 
     @discardableResult
@@ -67,5 +68,55 @@ enum NestedXCTestBundleID {
             updated += 1
         }
         return updated
+    }
+
+    /// Reject an XCTest Runner before installation when recursive signing
+    /// omitted the nested test binary or bundle resources. CodeSignKit still
+    /// owns cryptographic signature verification.
+    static func requireSignedArtifacts(
+        stagedApp: URL,
+        signedBundleID: String,
+        fileManager: FileManager = .default
+    ) throws {
+        guard !signedBundleID.isEmpty else {
+            throw ReconcileError.missingNestedIdentifier
+        }
+        let plugIns = stagedApp.appendingPathComponent("PlugIns", isDirectory: true)
+        guard fileManager.fileExists(atPath: plugIns.path) else { return }
+        let items = try fileManager.contentsOfDirectory(
+            at: plugIns,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        )
+        for bundle in items where bundle.pathExtension.lowercased() == "xctest" {
+            let flags = try bundle.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard flags.isSymbolicLink != true, flags.isDirectory == true else {
+                throw ReconcileError.symlinkedTestBundle
+            }
+            let info = try Data(contentsOf: bundle.appendingPathComponent("Info.plist"))
+            guard let plist = try PropertyListSerialization.propertyList(
+                from: info, options: [], format: nil
+            ) as? [String: Any],
+                  let testID = plist["CFBundleIdentifier"] as? String,
+                  testID == signedBundleID,
+                  let executableName = plist["CFBundleExecutable"] as? String,
+                  !executableName.isEmpty,
+                  !executableName.contains("/"),
+                  executableName != "." && executableName != ".." else {
+                throw ReconcileError.unexpectedNestedIdentifier
+            }
+            let binary = bundle.appendingPathComponent(executableName)
+            let resources = bundle.appendingPathComponent("_CodeSignature/CodeResources")
+            let binaryFlags = try? binary.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+            let resourceFlags = try? resources.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+            guard binaryFlags?.isRegularFile == true,
+                  binaryFlags?.isSymbolicLink != true,
+                  (binaryFlags?.fileSize ?? 0) > 0,
+                  resourceFlags?.isRegularFile == true,
+                  resourceFlags?.isSymbolicLink != true,
+                  (resourceFlags?.fileSize ?? 0) > 0 else {
+                throw ReconcileError.missingSignedTestArtifacts
+            }
+        }
     }
 }

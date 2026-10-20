@@ -99,7 +99,7 @@ jobs:
             sidestore/scripts/NestedXCTestGuard/main.swift \
             -o "$RUNNER_TEMP/test-nested-xctest"
           "$RUNNER_TEMP/test-nested-xctest" | tee "$RUNNER_TEMP/test-nested-xctest.log"
-          grep -Fx 'NESTED_XCTEST_IDENTITY_REGRESSION_4_OF_4_PASS' "$RUNNER_TEMP/test-nested-xctest.log"
+          grep -Fx 'NESTED_XCTEST_IDENTITY_AND_ARTIFACT_REGRESSION_8_OF_8_PASS' "$RUNNER_TEMP/test-nested-xctest.log"
           grep -F 'NESTED_XCTEST_IDENTIFIERS_ALIGNED' sidestore/SideStore/Core/Operations/PipelineOperations/ResignAppOperation.swift
 
       - name: Apply and verify guest AppGroup nil-path guard

@@ -205,6 +205,14 @@ final class ResignAppOperation: BasePipelineOperation<InstallAppOperationContext
     private func resignAppBundle(at fileURL: URL, team: ALTTeam, certificate: ALTCertificate, profiles: [ALTProvisioningProfile]) async throws -> URL {
         let signer = ALTSigner(team: team, certificate: certificate)
         try await signer.signApp(at: fileURL, provisioningProfiles: profiles, progress: nil)
+        guard let resignedID = (try? InfoPlistParser(bundleURL: fileURL))?.bundleIdentifier else {
+            throw OperationError.missingInfoPlist(reason: "Cannot verify signed Runner identity.")
+        }
+        // CodeSignKit recursively signs PlugIns/*.xctest. Fail closed when a
+        // nested XCTest artifact was omitted; do not alter installed apps.
+        try NestedXCTestBundleID.requireSignedArtifacts(
+            stagedApp: fileURL, signedBundleID: resignedID
+        )
         return fileURL
     }
     
