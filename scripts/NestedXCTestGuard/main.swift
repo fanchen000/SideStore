@@ -57,7 +57,7 @@ do {
     ), "old nested signature must be invalidated in temporary staging")
 
     do {
-        _ = try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: test)
+        _ = try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: test, expectedTestCount: 1)
         require(false, "unsigned nested XCTest must fail post-sign gate")
     } catch NestedXCTestBundleID.ReconcileError.missingSignedTestArtifacts {
         // Expected: no signature resources after identity reconciliation.
@@ -73,9 +73,22 @@ do {
         withIntermediateDirectories: true)
     try Data("synthetic-signature-marker".utf8).write(
         to: nested.appendingPathComponent("_CodeSignature/CodeResources"))
-    let verifiedSignedArtifacts = try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: test)
+    let verifiedSignedArtifacts = try NestedXCTestBundleID.requireSignedArtifacts(
+        stagedApp: test, expectedTestCount: 1)
     require(verifiedSignedArtifacts == 1,
             "structurally complete XCTest must pass offline artifact gate")
+    let stagedTestCount = try NestedXCTestBundleID.countTestBundles(stagedApp: test)
+    require(stagedTestCount == 1,
+            "staged XCTest count must be observed before signing")
+
+    let strippedTestApp = try mockApp(testIdentifier: nil)
+    do {
+        _ = try NestedXCTestBundleID.requireSignedArtifacts(
+            stagedApp: strippedTestApp, expectedTestCount: 1)
+        require(false, "missing nested test after signing must fail closed")
+    } catch NestedXCTestBundleID.ReconcileError.missingSignedTestArtifacts {
+        // Expected when a signing pipeline discards the whole test bundle.
+    }
 
     let unchanged = try NestedXCTestBundleID.reconcile(
         stagedApp: test, originalBundleID: original, signedBundleID: signed
@@ -99,7 +112,8 @@ do {
         stagedApp: ordinary, originalBundleID: original, signedBundleID: signed
     )
     require(noXCTest == 0, "ordinary applications without XCTest must remain untouched")
-    let ordinarySignedArtifacts = try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: ordinary)
+    let ordinarySignedArtifacts = try NestedXCTestBundleID.requireSignedArtifacts(
+        stagedApp: ordinary, expectedTestCount: 0)
     require(ordinarySignedArtifacts == 0,
             "ordinary applications must not require nested XCTest artifacts")
 

@@ -203,9 +203,11 @@ final class ResignAppOperation: BasePipelineOperation<InstallAppOperationContext
     }
     
     private func resignAppBundle(at fileURL: URL, team: ALTTeam, certificate: ALTCertificate, profiles: [ALTProvisioningProfile]) async throws -> URL {
+        let expectedTests = try NestedXCTestBundleID.countTestBundles(stagedApp: fileURL)
         let signer = ALTSigner(team: team, certificate: certificate)
         try await signer.signApp(at: fileURL, provisioningProfiles: profiles, progress: nil)
-        let checkedTests = try NestedXCTestBundleID.requireSignedArtifacts(stagedApp: fileURL)
+        let checkedTests = try NestedXCTestBundleID.requireSignedArtifacts(
+            stagedApp: fileURL, expectedTestCount: expectedTests)
         if checkedTests > 0 {
             debugLog("[ResignAppOperation] NESTED_XCTEST_SIGNED_ARTIFACTS_PRESENT count=\(checkedTests)")
         }

@@ -13,6 +13,32 @@ enum NestedXCTestBundleID {
         case missingSignedTestArtifacts
     }
 
+    /// Remember the test-bundle count before the signer touches the staged app.
+    /// A signer that drops PlugIns/*.xctest must never look successful.
+    static func countTestBundles(
+        stagedApp: URL,
+        fileManager: FileManager = .default
+    ) throws -> Int {
+        let plugIns = stagedApp.appendingPathComponent("PlugIns", isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: plugIns.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return 0 }
+        let items = try fileManager.contentsOfDirectory(
+            at: plugIns,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        )
+        var count = 0
+        for bundle in items where bundle.pathExtension.lowercased() == "xctest" {
+            let flags = try bundle.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard flags.isSymbolicLink != true, flags.isDirectory == true else {
+                throw ReconcileError.symlinkedTestBundle
+            }
+            count += 1
+        }
+        return count
+    }
+
     @discardableResult
     static func reconcile(
         stagedApp: URL,
@@ -76,12 +102,21 @@ enum NestedXCTestBundleID {
     @discardableResult
     static func requireSignedArtifacts(
         stagedApp: URL,
+        expectedTestCount: Int,
         fileManager: FileManager = .default
     ) throws -> Int {
+        guard expectedTestCount >= 0 else {
+            throw ReconcileError.missingSignedTestArtifacts
+        }
         let plugIns = stagedApp.appendingPathComponent("PlugIns", isDirectory: true)
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: plugIns.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else { return 0 }
+              isDirectory.boolValue else {
+            guard expectedTestCount == 0 else {
+                throw ReconcileError.missingSignedTestArtifacts
+            }
+            return 0
+        }
 
         let items = try fileManager.contentsOfDirectory(
             at: plugIns,
@@ -115,6 +150,9 @@ enum NestedXCTestBundleID {
                 throw ReconcileError.missingSignedTestArtifacts
             }
             verified += 1
+        }
+        guard verified == expectedTestCount else {
+            throw ReconcileError.missingSignedTestArtifacts
         }
         return verified
     }
