@@ -1,0 +1,68 @@
+name: iLoader XCTest ID Equality Windows Build
+on:
+  push:
+    branches: [ci/iloader-xctest-equality-fix]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout isolated patch
+        uses: actions/checkout@v4
+        with:
+          repository: fanchen000/SideStore
+          ref: ci/iloader-xctest-equality-fix
+          path: patch-source
+      - name: Checkout pinned iLoader 2.3.10
+        uses: actions/checkout@v4
+        with:
+          repository: nab138/iloader
+          ref: v2.3.10
+          path: iloader
+      - name: Configure Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Configure Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Run Bundle-ID regression tests
+        shell: pwsh
+        run: python -m unittest discover -s patch-source/.github/scripts -p test_iloader_xctest_patch.py -v
+      - name: Apply hash-pinned isideload patch (offline account, no phone)
+        shell: pwsh
+        run: python patch-source/.github/scripts/patch_iloader_xctest.py --iloader-root iloader
+      - name: Verify vendor source only changes XCTest equal-ID branch
+        shell: pwsh
+        run: |
+          $code = Get-Content -Raw iloader/src-tauri/vendor/isideload/src/sideload/application.rs
+          if (-not $code.Contains('Some("xctest")')) { throw "XCTest equal-ID branch missing" }
+          if (-not $code.Contains('id.len() > main_app_bundle_id.len()')) { throw "Normal extension checks missing" }
+          if (-not (Test-Path iloader/bun.lock)) { throw "Pinned bun lockfile missing" }
+      - name: Install frontend dependencies
+        shell: pwsh
+        working-directory: iloader
+        run: bun install --frozen-lockfile
+      - name: Build frontend
+        shell: pwsh
+        working-directory: iloader
+        run: bun run build
+      - name: Compile patched Win64 iLoader without bundling
+        shell: pwsh
+        run: cargo build --release --manifest-path iloader/src-tauri/Cargo.toml
+      - name: Validate output and compute SHA256
+        shell: pwsh
+        run: |
+          $p = "iloader/src-tauri/target/release/iloader.exe"
+          if (!(Test-Path $p)) { throw "Patched iLoader binary missing" }
+          if ((Get-Item $p).Length -lt 1000000) { throw "Binary unexpectedly small" }
+          Get-FileHash -Algorithm SHA256 $p | Format-List
+          "NON_PRODUCTION_CANDIDATE_NO_DEVICE_TEST" | Set-Content -Encoding ascii iloader/REPAIR_BUILD_STATUS.txt
+      - name: Upload unsigned test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: iloader-2310-xctest-equal-id-unsigned
+          path: |
+            iloader/src-tauri/target/release/iloader.exe
+            iloader/REPAIR_BUILD_STATUS.txt
+          retention-days: 7
