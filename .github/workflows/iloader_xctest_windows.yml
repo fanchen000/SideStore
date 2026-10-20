@@ -47,9 +47,10 @@ jobs:
         shell: pwsh
         working-directory: iloader
         run: bun run build
-      - name: Compile patched Win64 iLoader without bundling
+      - name: Build production Tauri EXE with embedded frontend
         shell: pwsh
-        run: cargo build --release --manifest-path iloader/src-tauri/Cargo.toml
+        working-directory: iloader
+        run: bun run tauri build --no-bundle
       - name: Validate output and compute SHA256
         shell: pwsh
         run: |
