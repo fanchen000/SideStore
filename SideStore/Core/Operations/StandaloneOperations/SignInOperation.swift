@@ -85,12 +85,9 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
             self.setProgress(100)
             return authResult
         } catch {
-            self.debugLog("[SignInOperation] execute caught error during authentication: \(error). Cleaning up...")
-            if !AuthManager.shared.hasStoredPassword &&
-               !AuthManager.shared.hasStoredXcodeToken
-            {
-                await AuthManager.shared.signOut()
-            }
+            // Failed login is not an explicit user sign-out: never revoke a
+            // working certificate, active team or any stored auth state here.
+            self.debugLog("[SignInOperation] Authentication failed; preserving existing account and certificate state: \(error)")
             try? await self.finalizeAuthentication(result: .failure(error))
             throw error
         }
@@ -137,11 +134,8 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
                 return (account, session)
             } catch {
                 self.debugLog("[SignInOperation] authenticationLoop: Attempt failed with error: \(error)")
-                let errorString = "\(error)"
-                if errorString.contains("-80045") || errorString.contains("-45061") {
-                    self.debugLog("[SignInOperation] Detected auth error -80045/-45061. Purging stored anisette ADI blob...")
-                    AnisetteConfigManager.shared.anisetteAdiBlob = nil
-                }
+                // -80045/-45061 may reflect server-side or temporary identity
+                // mismatches. Clearing ADI silently makes recovery harder.
                 await handler.handleSignInResult(.failure(error))
             }
         }

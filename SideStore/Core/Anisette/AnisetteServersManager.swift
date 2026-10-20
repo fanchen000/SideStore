@@ -68,9 +68,10 @@ public actor AnisetteServersManager {
 
         let fileManager = FileManager.default
 
-        // Migrate default menuAnisetteURL if still pointed to ani.sidestore.io
+        // Repair only a missing selection. Do not silently override a user
+        // selected HTTPS endpoint on each catalog read.
         let currentURL = UserDefaults.standard.menuAnisetteURL
-        if currentURL.isEmpty || currentURL.contains("ani.sidestore.io") {
+        if currentURL.isEmpty {
             UserDefaults.standard.menuAnisetteURL = AppConstants.Anisette.Servers.defaultServerURL
         }
 

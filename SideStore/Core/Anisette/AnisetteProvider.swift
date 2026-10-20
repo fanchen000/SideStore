@@ -20,10 +20,28 @@ enum AnisetteProvider {
         }
     }
 
-    private static func fetchRemote(handler: AnisetteServerHandler? = nil) async throws -> ALTAnisetteData {
-        let serverUrlStrings = await AnisetteServersManager.shared.getActiveServerURLs()
+    private static func fetchRemote(
+        handler: AnisetteServerHandler? = nil,
+        allowCatalogRecovery: Bool = true,
+        candidateServerStrings: [String]? = nil
+    ) async throws -> ALTAnisetteData {
+        let serverUrlStrings: [String]
+        if let candidateServerStrings {
+            serverUrlStrings = candidateServerStrings
+        } else {
+            serverUrlStrings = await AnisetteServersManager.shared.getActiveServerURLs()
+        }
         let servers = serverUrlStrings.compactMap { URL(string: $0) }
         guard !servers.isEmpty else {
+            if allowCatalogRecovery && !UserDefaults.standard.disableAnisetteRotation {
+                await AnisetteServersManager.shared.syncOnFailureIfNeeded()
+                let refreshed = await AnisetteServersManager.shared.getActiveServerURLs()
+                let secureServers = refreshed.filter { URL(string: $0)?.scheme == "https" }
+                if !secureServers.isEmpty {
+                    return try await fetchRemote(handler: handler, allowCatalogRecovery: false,
+                                                 candidateServerStrings: secureServers)
+                }
+            }
             throw AnisetteError.noServersConfigured
         }
 
@@ -46,9 +64,13 @@ enum AnisetteProvider {
         }()
         debugLog("[AnisetteProvider] effective_client_profile=\(profileKind)")
 
-        let (anisetteData, newAdiBlob) = try await provider.fetchAnisetteDataWithFailover(
-            servers: UserDefaults.standard.disableAnisetteRotation ? [servers[startIndex]] : servers,
-            startIndex: startIndex,
+        let effectiveServers = UserDefaults.standard.disableAnisetteRotation ? [servers[startIndex]] : servers
+        let effectiveStartIndex = UserDefaults.standard.disableAnisetteRotation ? 0 : startIndex
+        let fetchResult: (data: ALTAnisetteData, newAdiBlob: Data?)
+        do {
+            fetchResult = try await provider.fetchAnisetteDataWithFailover(
+            servers: effectiveServers,
+            startIndex: effectiveStartIndex,
             identifier: identifier,
             existingAdiBlob: existingBlob,
             headers: headers,
@@ -56,13 +78,11 @@ enum AnisetteProvider {
                 if let anisetteError = error as? SideSign.AnisetteError {
                     switch anisetteError {
                     case .incorrectlyProvisioned:
-                        debugLog("[AnisetteProvider] State de-synced / corrupt ADI blob detected. Purging stored adi.pb...")
-                        AnisetteConfigManager.shared.anisetteAdiBlob = nil
-                        return true
+                        debugLog("[AnisetteProvider] Possible ADI desynchronization; preserving provisioning state.")
+                        return false
                     case .badServerResponse(_, let payload) where payload.contains("-45061"):
-                        debugLog("[AnisetteProvider] State de-synced / corrupt ADI blob detected (-45061). Purging stored adi.pb...")
-                        AnisetteConfigManager.shared.anisetteAdiBlob = nil
-                        return true
+                        debugLog("[AnisetteProvider] ADI error -45061; preserving provisioning state.")
+                        return false
                     case .outdatedV1Server(let serverURL, _):
                         if UserDefaults.standard.defaultServerURL == serverURL.absoluteString {
                             return true
@@ -90,8 +110,27 @@ enum AnisetteProvider {
                 UserDefaults.standard.menuAnisetteURL = successfulServer.absoluteString
                 debugLog("[AnisetteProvider] Successfully fetched Anisette data from \(successfulServer.absoluteString)")
             }
-        )
+            )
+        } catch {
+            // Only retry once, after a catalog refresh discovers new HTTPS
+            // endpoints. Never clear the original ADI or repeat a failed host.
+            if allowCatalogRecovery && !UserDefaults.standard.disableAnisetteRotation {
+                await AnisetteServersManager.shared.syncOnFailureIfNeeded()
+                let refreshed = await AnisetteServersManager.shared.getActiveServerURLs()
+                let oldServers = Set(serverUrlStrings)
+                let newServers = refreshed.filter {
+                    !oldServers.contains($0) && URL(string: $0)?.scheme == "https"
+                }
+                if !newServers.isEmpty {
+                    debugLog("[AnisetteProvider] New HTTPS catalog endpoint available; retrying once.")
+                    return try await fetchRemote(handler: handler, allowCatalogRecovery: false,
+                                                 candidateServerStrings: newServers)
+                }
+            }
+            throw error
+        }
 
+        let (anisetteData, newAdiBlob) = fetchResult
         if let freshBlob = newAdiBlob {
             AnisetteConfigManager.shared.anisetteAdiBlob = freshBlob.base64EncodedString()
         }

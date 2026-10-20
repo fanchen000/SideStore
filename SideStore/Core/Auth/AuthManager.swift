@@ -25,9 +25,11 @@ public final class AuthManager: @unchecked Sendable {
 
     public var isAuthenticated: Bool {
         let hasEmail = Keychain.shared.appleIDEmailAddress != nil
-        let hasPassword = Keychain.shared.appleIDPassword != nil
+        let hasAdsid = Keychain.shared.appleIDAdsid != nil
         let hasToken = Keychain.shared.appleIDXcodeToken != nil
-        return hasEmail && (hasPassword || hasToken)
+        // Refresh uses the ADSID/Xcode-token pair, not the saved password.
+        // Do not report a session as ready if one token is missing.
+        return hasEmail && hasAdsid && hasToken
     }
     
     public var currentAppleID: String? {
@@ -101,7 +103,7 @@ public final class AuthManager: @unchecked Sendable {
             guard let adsid = self.adsid,                           // directory services id
                   let xcodeToken = self.xcodeToken else             // xcode token
             {
-                debugLog("[AuthManager] No stored tokens found.")
+                debugLog("[AuthManager] Refresh session unavailable: ADSID or Xcode token missing; preserving stored state.")
                 throw OperationError.notAuthenticated
             }
             let anisetteData = try await AnisetteProvider.fetch()   // one time pass
