@@ -124,7 +124,10 @@ final class AnisetteViewModel: ObservableObject {
 
             self.isNoInternet = !isOnline
             self.errorMessage = msg
-            self.items = []
+            // A remote catalog outage must not hide the on-disk Windows
+            // Anisette fallbacks or overwrite the current selected server.
+            // This reads only the local catalog; it never resets ADI or auth.
+            self.items = await AnisetteServersManager.shared.loadLocalServers()
             debugLog("[AnisetteViewModel] Server list sync Failed for URL '\(self.source)' | Internet Online: \(isOnline) | Error: \(error)")
             return .failure(error)
         }
@@ -266,7 +269,7 @@ struct AnisetteServersView: View {
         List {
             // Section 1: Server Selection
             Section {
-                if viewModel.items.isEmpty || viewModel.errorMessage != nil {
+                if viewModel.items.isEmpty {
                     if viewModel.items.isEmpty && viewModel.errorMessage == nil && viewModel.isLoading {
                         VStack(spacing: 12) {
                             Spacer()
@@ -397,7 +400,10 @@ struct AnisetteServersView: View {
                     Text("Available Servers")
                 }
             } footer: {
-                if !viewModel.items.isEmpty && viewModel.errorMessage == nil {
+                if !viewModel.items.isEmpty && viewModel.errorMessage != nil {
+                    Text("Remote Anisette catalog unavailable. Showing saved servers; choose an existing entry or retry later.")
+                        .foregroundColor(.orange)
+                } else if !viewModel.items.isEmpty {
                     Text("Drag to reorder server priority. Swipe left on a server to hide or unhide it.")
                 }
             }

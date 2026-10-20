@@ -2,7 +2,7 @@ name: LC381111 Return to LiveContainer + RP + Nested Guest
 
 on:
   push:
-    branches: [fix/return-to-container-381111, fix/prephone-auth-preservation-20261020]
+    branches: [fix/return-to-container-381111, fix/prephone-auth-preservation-20261020, fix/anisette-catalog-offline-fallback-20261020]
   workflow_dispatch:
 
 permissions:
@@ -46,6 +46,7 @@ jobs:
           python3 sidestore/scripts/test_hsc434_remote_mode.py
           python3 sidestore/scripts/test_prephone_auth_preservation.py
           python3 sidestore/scripts/test_reauthenticate_without_signout.py
+          python3 sidestore/scripts/test_anisette_offline_fallback.py
           git -C sidestore diff --exit-code
           git -C live diff --exit-code
           echo "PINNED_FIXED_INPUTS_VERIFIED"
