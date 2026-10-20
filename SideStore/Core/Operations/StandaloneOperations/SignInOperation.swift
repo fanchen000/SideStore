@@ -375,7 +375,16 @@ private extension SignInOperation {
 
     private func fetchTeam(for account: ALTAccount, session: ALTAppleAPISession) async throws -> ALTTeam {
         self.verboseLog("[SignInOperation] fetchTeam: Requesting teams from Apple...")
-        let teams = try await DeveloperPortalProxy.shared.fetchTeams(for: account)
+        // In a renewal, the old ADSID/Xcode token is known to be rejected.
+        // Validate the newly issued session directly; the generic proxy
+        // would silently rebuild a session from the STILL-OLD Keychain token.
+        // Do not persist new credentials until the expected team is proven.
+        let teams: [ALTTeam]
+        if expectedTeamIdentifier != nil {
+            teams = try await ALTAppleAPI.shared.fetchTeams(for: account, session: session)
+        } else {
+            teams = try await DeveloperPortalProxy.shared.fetchTeams(for: account)
+        }
         
         guard !teams.isEmpty else {
             throw DeveloperPortalError.noTeams

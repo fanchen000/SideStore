@@ -64,5 +64,11 @@ class SessionRenewalSafety(unittest.TestCase):
         self.assertIn("expectedTeamIdentifier: expectedTeamIdentifier", self.auth)
         self.assertIn("expectedAppleID: expectedAppleID", self.auth)
 
+    def test_new_session_validates_team_before_keychain_replacement(self):
+        f = self.flow.split("private func fetchTeam(for account:", 1)[1]
+        self.assertIn("if expectedTeamIdentifier != nil", f)
+        self.assertIn("ALTAppleAPI.shared.fetchTeams(for: account, session: session)", f)
+        self.assertIn("DeveloperPortalProxy.shared.fetchTeams(for: account)", f)
+
 if __name__ == "__main__":
     unittest.main()
