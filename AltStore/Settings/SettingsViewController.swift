@@ -1239,5 +1239,251 @@ extension SettingsViewController
                         return UIHostingController(rootView: view)
                     } else {
                         verboseLog("[SettingsVC] Creating root StorageExplorerView")
+                        let view = StorageExplorerView(onSelectFolder: onSelectFolder)
+                        return UIHostingController(rootView: view)
+                    }
+                }
+                let vc = makeExplorerVC()
+                verboseLog("[SettingsVC] Pushing root StorageExplorerView controller onto navigationController")
+                navigationController?.pushViewController(vc, animated: true)
+                
+            case .clearCache: self.clearCache()
+            }
+            
+        case .credits:
+            let row = CreditsRow.allCases[indexPath.row]
+            switch row
+            {
+            case .developer: self.openTwitter(username: "sidestoreio")
+            case .operations: self.openTwitter(username: "sidestoreio")
+            case .designer: self.openTwitter(username: "lit_ritt")
+            case .softwareLicenses: break
+            }
+            
+            if let selectedIndexPath = self.tableView.indexPathForSelectedRow
+            {
+                self.tableView.deselectRow(at: selectedIndexPath, animated: true)
+            }
+            
+        case .advancedSettings:
+            let row = AdvancedSettingsRow.allCases[indexPath.row]
+            switch row
+            {
+            case .sendFeedback:
+                let alertController = UIAlertController(title: "Send Feedback", message: "Choose a method to send feedback:", preferredStyle: .actionSheet)
+                
+                // Option 1: GitHub
+                alertController.addAction(UIAlertAction(title: "GitHub", style: .default) { _ in
+                    self.openWebURL(AppConstants.URLs.sideStoreIssues, preferredTintColor: .altPrimary)
+                })
+                
+                // Option 2: Discord
+                alertController.addAction(UIAlertAction(title: "Discord", style: .default) { _ in
+                    self.openWebURL(AppConstants.URLs.sideStoreDiscord, preferredTintColor: .altPrimary)
+                })
+                
+                #if !os(tvOS)
+                // Option 3: Mail
+                alertController.addAction(UIAlertAction(title: "Send Email", style: .default) { _ in
+                    if MFMailComposeViewController.canSendMail() {
+                        let mailViewController = MFMailComposeViewController()
+                        mailViewController.mailComposeDelegate = self
+                        mailViewController.setToRecipients(["support@sidestore.io"])
 
-[Showing lines 1-1241 of 1490 (50.0KB limit). Use offset=1242 to continue.]
+                        // TODO: MARKETING_VERSION is going to be set anyways so this needs to be fixed for beta
+                        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+                            mailViewController.setSubject("SideStore Beta \(version) Feedback")
+                        } else {
+                            mailViewController.setSubject("SideStore Beta Feedback")
+                        }
+
+                       self.present(mailViewController, animated: true, completion: nil)
+                    } else {
+                      let toastView = ToastView(text: NSLocalizedString("Cannot Send Mail", comment: ""), detailText: nil)
+                      toastView.show(in: self)
+                    }
+                })
+                #endif
+                
+                // Cancel action
+                alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+                
+                // For iPad: Set the source view if presenting on iPad to avoid crashes
+                if let popoverController = alertController.popoverPresentationController {
+                    popoverController.sourceView = self.view
+                    popoverController.sourceRect = self.view.bounds
+                }
+                
+                // Present the action sheet
+                self.present(alertController, animated: true, completion: nil)
+                
+            case .refreshSideJITServer:
+                let jitConfigView = SideJITServerConfigView()
+                let vc = UIHostingController(rootView: jitConfigView)
+                #if !os(tvOS)
+                let appearance = UINavigationBarAppearance()
+                appearance.configureWithDefaultBackground()
+                vc.navigationItem.scrollEdgeAppearance = appearance
+                vc.navigationItem.standardAppearance = appearance
+                #endif
+                self.navigationController?.pushViewController(vc, animated: true)
+                self.tableView.deselectRow(at: indexPath, animated: true)
+                
+            case .pairingFileManagement:
+                let pairingView = PairingFileManagementView()
+                let vc = UIHostingController(rootView: pairingView)
+                #if !os(tvOS)
+                let appearance = UINavigationBarAppearance()
+                appearance.configureWithDefaultBackground()
+                vc.navigationItem.scrollEdgeAppearance = appearance
+                vc.navigationItem.standardAppearance = appearance
+                #endif
+                self.navigationController?.pushViewController(vc, animated: true)
+                self.tableView.deselectRow(at: indexPath, animated: true)
+                
+            case .anisetteServers:
+                let anisetteServersView = AnisetteServersView(
+                    selected: UserDefaults.standard.menuAnisetteURL,
+                    onResetAdiPb: { [weak self] in
+                        guard let self = self else { return }
+                        ToastView(text: "Cleared adi.pb!", detailText: "You will need to log back into Apple ID in SideStore.")
+                            .show(in: self)
+                    }
+                )
+                
+                let vc = UIHostingController(rootView: anisetteServersView)
+                self.prepare(for: UIStoryboardSegue(identifier: "anisetteServers", source: self, destination: vc), sender: nil)
+
+            case .connectionConfig:
+                let connectionConfigView = ConnectionConfigView()
+                let vc = UIHostingController(rootView: connectionConfigView)
+
+                #if !os(tvOS)
+                let appearance = UINavigationBarAppearance()
+                appearance.configureWithDefaultBackground()   // gives solid background
+                vc.navigationItem.scrollEdgeAppearance = appearance
+                vc.navigationItem.standardAppearance = appearance
+                #endif
+
+                navigationController?.pushViewController(vc, animated: true)
+
+            case .networkDiscovery:
+                let discoveryView = BonjourDiscoveryView()
+                let vc = UIHostingController(rootView: discoveryView)
+                vc.view.backgroundColor = .settingsBackground
+                vc.title = NSLocalizedString("Network Discovery", comment: "")
+                self.prepare(for: UIStoryboardSegue(identifier: "diagnostics", source: self, destination: vc), sender: nil)
+
+            case .developerServices:
+                let developerServicesView = DeveloperServicesView(presentingViewController: self)
+                let vc = UIHostingController(rootView: developerServicesView)
+                self.prepare(for: UIStoryboardSegue(identifier: "developerServices", source: self, destination: vc), sender: nil)
+
+            case .profileManagement:
+                let profileManagementView = ProfileManagementView(presentingViewController: self)
+                let vc = UIHostingController(rootView: profileManagementView)
+                self.prepare(for: UIStoryboardSegue(identifier: "profileManagement", source: self, destination: vc), sender: nil)
+
+            case .certificateManagement:
+                let certificateManagementView = CertificatesView(presentingViewController: self)
+                let vc = UIHostingController(rootView: certificateManagementView)
+                self.prepare(for: UIStoryboardSegue(identifier: "certificateManagement", source: self, destination: vc), sender: nil)
+                
+            case .backupAndRestore:
+                let backupView = BackupAndRestoreView()
+                let vc = UIHostingController(rootView: backupView)
+                vc.view.backgroundColor = .settingsBackground
+                vc.title = NSLocalizedString("Backup & Restore", comment: "")
+                self.prepare(for: UIStoryboardSegue(identifier: "diagnostics", source: self, destination: vc), sender: nil)
+                
+            case .userCustomizations:
+                let userCustomizationsView = UserCustomizationsView()
+                let vc = UIHostingController(rootView: userCustomizationsView)
+                vc.view.backgroundColor = .settingsBackground
+                vc.title = NSLocalizedString("User Customizations", comment: "")
+                self.prepare(for: UIStoryboardSegue(identifier: "diagnostics", source: self, destination: vc), sender: nil)
+                
+            case .refreshAttempts: break
+            }
+        
+        case .diagnostics:
+            let row = DiagnosticsRow.allCases[indexPath.row]
+            switch row {
+            case .developerOptions:
+                let developerOptionsView = DeveloperOptionsView()
+                let hostingController = UIHostingController(rootView: developerOptionsView)
+                hostingController.view.backgroundColor = .settingsBackground
+                hostingController.title = NSLocalizedString("Developer Options", comment: "")
+                self.prepare(for: UIStoryboardSegue(identifier: "diagnostics", source: self, destination: hostingController), sender: nil)
+            case .experimentalFeatures:
+                let experimentalFeaturesView = ExperimentalFeaturesView()
+                let hostingController = UIHostingController(rootView: experimentalFeaturesView)
+                hostingController.view.backgroundColor = .settingsBackground
+                hostingController.title = NSLocalizedString("Experimental Features", comment: "")
+                self.prepare(for: UIStoryboardSegue(identifier: "diagnostics", source: self, destination: hostingController), sender: nil)
+            }
+            
+            
+        // case .account, .patreon, .display, .instructions, .macDirtyCow: break
+        case .patreon, .display, .instructions, .betaTesting: break
+        }
+        
+        
+        // deselect the row before returning (so that it doesn't look like stuck selected)
+        tableView.deselectRow(at: indexPath, animated: true)
+    }
+}
+
+#if !os(tvOS)
+extension SettingsViewController: MFMailComposeViewControllerDelegate
+{
+    func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?)
+    {
+        if let error = error
+        {
+            let toastView = ToastView(error: error)
+            toastView.show(in: self)
+        }
+        
+        controller.dismiss(animated: true, completion: nil)
+    }
+}
+#endif
+
+extension SettingsViewController: UIGestureRecognizerDelegate
+{
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool
+    {
+        return true
+    }
+}
+
+#if !os(tvOS)
+extension SettingsViewController: INUIAddVoiceShortcutViewControllerDelegate
+{
+    func addVoiceShortcutViewController(_ controller: INUIAddVoiceShortcutViewController, didFinishWith voiceShortcut: INVoiceShortcut?, error: Error?)
+    {
+        if let indexPath = self.tableView.indexPathForSelectedRow
+        {
+            self.tableView.deselectRow(at: indexPath, animated: true)
+        }
+        
+        controller.dismiss(animated: true, completion: nil)
+        
+        guard let error = error else { return }
+        
+        let toastView = ToastView(error: error)
+        toastView.show(in: self)
+    }
+    
+    func addVoiceShortcutViewControllerDidCancel(_ controller: INUIAddVoiceShortcutViewController)
+    {
+        if let indexPath = self.tableView.indexPathForSelectedRow
+        {
+            self.tableView.deselectRow(at: indexPath, animated: true)
+        }
+        
+        controller.dismiss(animated: true, completion: nil)
+    }
+}
+#endif
