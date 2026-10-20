@@ -223,6 +223,7 @@ jobs:
           cd live
           ditto "$RUNNER_TEMP/lc_archive.xcarchive" archive.xcarchive
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 381111" archive.xcarchive/Products/Applications/LiveContainer.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 3.8.11" archive.xcarchive/Products/Applications/LiveContainer.app/Info.plist
           python3 - <<'PY'
           from pathlib import Path
           p = Path('.github/build_github.sh')
@@ -248,6 +249,7 @@ jobs:
               root = 'Payload/LiveContainer.app/'
               main = plistlib.loads(z.read(root + 'Info.plist'))
               assert main['CFBundleVersion'] == '381111', 'Build marker not embedded'
+              assert main['CFBundleShortVersionString'] == '3.8.11', 'Wrong visible host version'
               embed = root + 'Frameworks/SideStoreApp.framework/'
               side = plistlib.loads(z.read(embed + 'Info.plist'))
               assert main['CFBundleIdentifier'] == 'com.kdt.livecontainer'
