@@ -21,6 +21,9 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
     
     private var appleIDEmailAddress: String?
     private var requiresPostAuthFlow = false
+    private let expectedTeamIdentifier: String?
+    private let expectedAppleID: String?
+    private var pendingReauthenticationPassword: String?
     
     let signInHandler: SignInHandler
     let anisetteServerHandler: AnisetteServerHandler
@@ -38,7 +41,9 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
         skipDeviceRegistration: Bool = false,
         skipCertificateProvisioning: Bool = false,
         skipResign: Bool = false,
-        skipHowTos: Bool = false
+        skipHowTos: Bool = false,
+        expectedTeamIdentifier: String? = nil,
+        expectedAppleID: String? = nil
     ) throws {
         self.signInHandler = signInHandler
         self.anisetteServerHandler = anisetteServerHandler
@@ -46,6 +51,12 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
         self.skipCertificateProvisioning = skipCertificateProvisioning
         self.skipResign = skipResign
         self.skipHowTos = skipHowTos
+        self.expectedTeamIdentifier = expectedTeamIdentifier
+        self.expectedAppleID = expectedAppleID
+        if expectedTeamIdentifier != nil &&
+            (!skipDeviceRegistration || !skipCertificateProvisioning || !skipResign || !skipHowTos || expectedAppleID == nil) {
+            throw OperationError.invalidParameters("Session renewal cannot alter device, certificate, or signed apps.")
+        }
         self.certificateFlow = CertificateProvisioningFlow(
             handler: signInHandler,
             skipCertificateProvisioning: skipCertificateProvisioning
@@ -85,6 +96,7 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
             self.setProgress(100)
             return authResult
         } catch {
+            self.pendingReauthenticationPassword = nil
             // Failed login is not an explicit user sign-out: never revoke a
             // working certificate, active team or any stored auth state here.
             self.debugLog("[SignInOperation] Authentication failed; preserving existing account and certificate state: \(error)")
@@ -103,6 +115,32 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
 
         // Resolve Team & Save State
         let team = try await self.fetchTeam(for: account, session: session)
+        if let expectedTeamIdentifier {
+            guard team.identifier == expectedTeamIdentifier,
+                  let expectedAppleID,
+                  let appleIDEmailAddress,
+                  appleIDEmailAddress.caseInsensitiveCompare(expectedAppleID) == .orderedSame else {
+                throw OperationError.invalidParameters("Session renewal must use the existing Apple ID and developer team.")
+            }
+            // Keep every existing credential, signing certificate, and team
+            // unchanged until both authentication and provisioning-free
+            // resolution succeed. A failed renewal must not poison the old
+            // session or trigger a new certificate or device registration.
+            let result = try await self.provision(
+                team: team, session: session, stepWeight: stepWeight,
+                reportProgress: reportProgress
+            )
+            guard let pendingReauthenticationPassword else {
+                throw OperationError.invalidParameters("Session renewal credentials were not staged.")
+            }
+            try await self.saveTeamAndAccount(team, makeActive: true)
+            AuthManager.shared.adsid = session.dsid
+            AuthManager.shared.xcodeToken = session.authToken
+            AuthManager.shared.currentAppleID = appleIDEmailAddress
+            AuthManager.shared.password = pendingReauthenticationPassword
+            self.pendingReauthenticationPassword = nil
+            return result
+        }
         try await self.saveTeamAndAccount(team, makeActive: true)
         reportProgress(stepWeight * 2)
 
@@ -142,6 +180,10 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
     }
     
     private func signIn(appleID: String, password: String) async throws -> (ALTAccount, ALTAppleAPISession) {
+        if let expectedAppleID,
+           appleID.caseInsensitiveCompare(expectedAppleID) != .orderedSame {
+            throw OperationError.invalidParameters("Enter the currently signed-in Apple ID to renew this session.")
+        }
         self.appleIDEmailAddress = appleID
         
         let anisetteData = try await self.getAnisetteData()
@@ -162,10 +204,16 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
             }
         )
         
-        AuthManager.shared.adsid = session.dsid
-        AuthManager.shared.xcodeToken = session.authToken
-        AuthManager.shared.currentAppleID = appleID
-        AuthManager.shared.password = password
+        if expectedTeamIdentifier != nil {
+            // Never overwrite a working local identity before verifying the
+            // new login resolves to exactly the existing developer team.
+            pendingReauthenticationPassword = password
+        } else {
+            AuthManager.shared.adsid = session.dsid
+            AuthManager.shared.xcodeToken = session.authToken
+            AuthManager.shared.currentAppleID = appleID
+            AuthManager.shared.password = password
+        }
         
         return (account, session)
     }

@@ -45,6 +45,7 @@ jobs:
           test -s sidestore/patches/SideSign/gsa_windows_akd_20261018.patch
           python3 sidestore/scripts/test_hsc434_remote_mode.py
           python3 sidestore/scripts/test_prephone_auth_preservation.py
+          python3 sidestore/scripts/test_reauthenticate_without_signout.py
           git -C sidestore diff --exit-code
           git -C live diff --exit-code
           echo "PINNED_FIXED_INPUTS_VERIFIED"

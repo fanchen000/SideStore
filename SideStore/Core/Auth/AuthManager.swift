@@ -145,7 +145,9 @@ public final class AuthManager: @unchecked Sendable {
         skipDeviceRegistration: Bool = false,
         skipCertificateProvisioning: Bool = false,
         skipResign: Bool = false,
-        skipHowTos: Bool = false
+        skipHowTos: Bool = false,
+        expectedTeamIdentifier: String? = nil,
+        expectedAppleID: String? = nil
     ) async throws -> SignInResult {
         let dbBackgroundContext = DatabaseManager.shared.persistentContainer.newBackgroundContext()
         let signInFlowHandler = SignInFlowHandler(presentingViewController: presentingViewController)
@@ -161,7 +163,9 @@ public final class AuthManager: @unchecked Sendable {
             skipDeviceRegistration: skipDeviceRegistration,
             skipCertificateProvisioning: skipCertificateProvisioning,
             skipResign: skipResign,
-            skipHowTos: skipHowTos
+            skipHowTos: skipHowTos,
+            expectedTeamIdentifier: expectedTeamIdentifier,
+            expectedAppleID: expectedAppleID
         )
         let result = try await signInOperation.execute()
         self.team = result.team

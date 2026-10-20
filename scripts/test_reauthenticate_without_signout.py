@@ -1,0 +1,68 @@
+"""Fail-closed source-level contracts for the in-place Apple session renewal UI.
+
+Real iOS compilation is performed by the workflow's Xcode archive stage.
+These checks specifically prevent a future refactor from turning account
+renewal into sign-out, credential clearing, certificate revocation, or resign.
+"""
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+def read(path):
+    return (ROOT / path).read_text(encoding="utf8")
+
+class SessionRenewalSafety(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.ui = read("AltStore/Settings/SettingsViewController.swift")
+        cls.auth = read("SideStore/Core/Auth/AuthManager.swift")
+        cls.flow = read("SideStore/Core/Operations/StandaloneOperations/SignInOperation.swift")
+        cls.renew = cls.ui.split("func renewAppleSession()", 1)[1].split("\n    func signIn()", 1)[0]
+
+    def test_visible_entry_keeps_sign_out_accessible(self):
+        self.assertIn('setTitle(NSLocalizedString("MANAGE"', self.ui)
+        self.assertIn('title: NSLocalizedString("Renew Session"', self.ui)
+        self.assertIn('title: NSLocalizedString("Sign Out"', self.ui)
+
+    def test_reauth_does_not_sign_out_or_clear_credentials(self):
+        self.assertNotIn("signOut(", self.renew)
+        self.assertNotIn("clearSignInInfo", self.renew)
+        self.assertNotIn("clearActiveCertificate", self.renew)
+
+    def test_all_high_risk_flows_are_disabled(self):
+        for flag in ("skipDeviceRegistration", "skipCertificateProvisioning",
+                     "skipResign", "skipHowTos"):
+            self.assertIn(flag + ": true", self.renew)
+
+    def test_identity_binding(self):
+        self.assertIn("expectedTeamIdentifier: existingTeamID", self.renew)
+        self.assertIn("expectedAppleID: existingAppleID", self.renew)
+        self.assertIn("appleID.caseInsensitiveCompare(expectedAppleID)", self.flow)
+        self.assertIn("team.identifier == expectedTeamIdentifier", self.flow)
+
+    def test_password_not_committed_before_team_check(self):
+        login = self.flow.split("private func signIn(appleID:", 1)[1].split(
+            "// Persistence Helpers", 1)[0]
+        self.assertIn("pendingReauthenticationPassword = password", login)
+        self.assertIn("if expectedTeamIdentifier != nil", login)
+        flow = self.flow.split("private func startAuthentication(", 1)[1].split(
+            "private func authenticationLoop()", 1)[0]
+        self.assertLess(flow.index("team.identifier == expectedTeamIdentifier"),
+                        flow.index("AuthManager.shared.adsid = session.dsid"))
+
+    def test_pending_password_cleared_on_failure(self):
+        self.assertIn("self.pendingReauthenticationPassword = nil", self.flow)
+
+    def test_guard_rejects_unsafe_renewal_options(self):
+        self.assertIn('Session renewal cannot alter device, certificate, or signed apps.', self.flow)
+        for flag in ("!skipDeviceRegistration", "!skipCertificateProvisioning",
+                     "!skipResign", "!skipHowTos"):
+            self.assertIn(flag, self.flow)
+
+    def test_auth_manager_passes_expected_identifiers(self):
+        self.assertIn("expectedTeamIdentifier: expectedTeamIdentifier", self.auth)
+        self.assertIn("expectedAppleID: expectedAppleID", self.auth)
+
+if __name__ == "__main__":
+    unittest.main()
