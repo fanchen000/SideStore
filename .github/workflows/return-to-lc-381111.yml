@@ -109,7 +109,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           src = Path('live/LiveContainer/Tweaks/NSFileManager+GuestHooks.m').read_text()
-          start = src.index('if([groupIdentifier isEqualToString:[NSClassFromString(@"LCSharedUtils") appGroupID]])')
+          start = src.index('if(groupIdentifier.length == 0)')
           end = src.index('NSURL *result;', start)
           block = src[start:end]
           assert 'if(mappedPath.length > 0)' in block
@@ -117,6 +117,7 @@ jobs:
           assert 'return nil;' in block
           assert 'return [self hook_containerURLForSecurityApplicationGroupIdentifier:' not in block
           assert 'if(groupIdentifier.length == 0)' in src
+          assert 'if(!guestRoot || !guestRoot[0]) return nil;' in src
           assert 'const char *hostHomePath = getenv("HOME");' in src
           assert 'if (!lcHomePath || !lcHomePath[0] || !hostHomePath || !hostHomePath[0])' in src
           assert '[@(hostHomePath) stringByAppendingPathComponent:@"Library/Cookies"]' in src
