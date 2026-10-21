@@ -24,6 +24,9 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
     private let expectedTeamIdentifier: String?
     private let expectedAppleID: String?
     private var pendingReauthenticationPassword: String?
+    private var renewalTemporaryRemote = false
+    private var renewalOriginalAdiBlob: String?
+    private var renewalOriginalServerURL = ""
     
     let signInHandler: SignInHandler
     let anisetteServerHandler: AnisetteServerHandler
@@ -74,7 +77,17 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
     }
 
     private func getAnisetteData() async throws -> ALTAnisetteData {
-        try await AnisetteProvider.fetch(handler: self.anisetteServerHandler)
+        if expectedTeamIdentifier != nil && UserDefaults.standard.useOnDeviceAnisette {
+            // Snapshot the existing identity before attempting a remote source.
+            // On any failed renewal, execute() restores this original state.
+            if !renewalTemporaryRemote {
+                renewalOriginalAdiBlob = AnisetteConfigManager.shared.anisetteAdiBlob
+                renewalOriginalServerURL = UserDefaults.standard.menuAnisetteURL
+                renewalTemporaryRemote = true
+            }
+            return try await AnisetteProvider.fetchForSessionRenewal(handler: anisetteServerHandler)
+        }
+        return try await AnisetteProvider.fetch(handler: anisetteServerHandler)
     }
     
     // Main Pipeline Execution
@@ -93,10 +106,21 @@ final class SignInOperation: BaseStandaloneOperation<StandaloneOperationContext,
             }
             
             try await self.finalizeAuthentication(result: .success(authResult))
+            // Only after Apple login, exact Team matching, and finalization have
+            // all passed can the new remote mode become the persistent default.
+            if renewalTemporaryRemote {
+                UserDefaults.standard.useOnDeviceAnisette = false
+                debugLog("[SignInOperation] Session renewal verified; remote Anisette mode retained.")
+            }
             self.setProgress(100)
             return authResult
         } catch {
             self.pendingReauthenticationPassword = nil
+            if renewalTemporaryRemote {
+                AnisetteConfigManager.shared.anisetteAdiBlob = renewalOriginalAdiBlob
+                UserDefaults.standard.menuAnisetteURL = renewalOriginalServerURL
+                debugLog("[SignInOperation] Session renewal failed; restored previous ADI and server choice.")
+            }
             // Failed login is not an explicit user sign-out: never revoke a
             // working certificate, active team or any stored auth state here.
             self.debugLog("[SignInOperation] Authentication failed; preserving existing account and certificate state: \(error)")

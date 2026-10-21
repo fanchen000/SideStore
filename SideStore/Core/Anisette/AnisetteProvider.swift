@@ -20,6 +20,18 @@ enum AnisetteProvider {
         }
     }
 
+
+    // Renewal uses a remote Anisette profile when the old on-device identity
+    // yields Apple -80045. This does not clear ADI, revoke certificates,
+    // register App IDs or change the user's preference before verification.
+    static func fetchForSessionRenewal(handler: AnisetteServerHandler? = nil) async throws -> ALTAnisetteData {
+        if UserDefaults.standard.useOnDeviceAnisette {
+            debugLog("[AnisetteProvider] renewal_source=temporary_remote")
+            return try await fetchRemote(handler: handler)
+        }
+        return try await fetch(handler: handler)
+    }
+
     private static func fetchRemote(
         handler: AnisetteServerHandler? = nil,
         allowCatalogRecovery: Bool = true,

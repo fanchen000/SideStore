@@ -18,6 +18,7 @@ class SessionRenewalSafety(unittest.TestCase):
         cls.ui = read("AltStore/Settings/SettingsViewController.swift")
         cls.auth = read("SideStore/Core/Auth/AuthManager.swift")
         cls.flow = read("SideStore/Core/Operations/StandaloneOperations/SignInOperation.swift")
+        cls.anisette = read("SideStore/Core/Anisette/AnisetteProvider.swift")
         cls.renew = cls.ui.split("func renewAppleSession()", 1)[1].split("\n    func signIn()", 1)[0]
 
     def test_visible_entry_keeps_sign_out_accessible(self):
@@ -69,6 +70,20 @@ class SessionRenewalSafety(unittest.TestCase):
         self.assertIn("if expectedTeamIdentifier != nil", f)
         self.assertIn("ALTAppleAPI.shared.fetchTeams(for: account, session: session)", f)
         self.assertIn("DeveloperPortalProxy.shared.fetchTeams(for: account)", f)
+
+    def test_renewal_uses_remote_without_destroying_saved_identity(self):
+        self.assertIn("fetchForSessionRenewal(handler: anisetteServerHandler)", self.flow)
+        self.assertIn("renewalOriginalAdiBlob = AnisetteConfigManager.shared.anisetteAdiBlob", self.flow)
+        self.assertIn("AnisetteConfigManager.shared.anisetteAdiBlob = renewalOriginalAdiBlob", self.flow)
+        self.assertIn("UserDefaults.standard.menuAnisetteURL = renewalOriginalServerURL", self.flow)
+        self.assertIn("renewal_source=temporary_remote", self.anisette)
+        self.assertIn("return try await fetchRemote(handler: handler)", self.anisette)
+
+    def test_persist_remote_mode_only_after_final_verification(self):
+        fragment = self.flow.split("try await self.finalizeAuthentication(result: .success(authResult))", 1)[1]
+        self.assertIn("if renewalTemporaryRemote {", fragment)
+        self.assertIn("UserDefaults.standard.useOnDeviceAnisette = false", fragment)
+        self.assertNotIn("signOut(", fragment.split("} catch {", 1)[0])
 
 if __name__ == "__main__":
     unittest.main()
